@@ -349,7 +349,7 @@
                 <li><strong>Physics Control:</strong>
                     <ul>
                         <li>- A new **Force** button has been added to the export cluster. Click it to toggle the physics on and off.</li>
-                        <li>- **Long-press** the Force button to open a modal where you can adjust the sensitivity of the repulsion, link distance, and collision forces.</li>
+                        <li>- **Double-click** the Force button to open a modal where you can adjust the sensitivity of the repulsion, link distance, and collision forces.</li>
                     </ul>
                 </li>
                 <li><strong>Start:</strong> Enter a central topic and click "Generate" to begin your mind map.</li>
@@ -661,7 +661,7 @@
             linkDistance: 100,
             collision: 0.9
         };
-        let forceToggleButtonLongPressTimer = null;
+        let forceButtonClickTimer = null;
 
         let multiSelectMode = false;
         let longPressTimer = null;
@@ -1039,20 +1039,6 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
             }
         }
 
-        forceToggleButton.addEventListener('mousedown', () => {
-            forceToggleButtonLongPressTimer = setTimeout(() => {
-                forceToggleButtonLongPressTimer = null; // Prevent click event
-                openForceSettingsModal();
-            }, 500);
-        });
-
-        forceToggleButton.addEventListener('mouseup', () => {
-            if (forceToggleButtonLongPressTimer) {
-                clearTimeout(forceToggleButtonLongPressTimer);
-                toggleForceLayout();
-            }
-        });
-
         function openForceSettingsModal() {
             chargeSlider.value = forceSettings.charge;
             chargeValue.textContent = forceSettings.charge;
@@ -1062,6 +1048,21 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
             collisionValue.textContent = forceSettings.collision;
             showModal(forceSettingsModal, chargeSlider);
         }
+
+        forceToggleButton.addEventListener('click', () => {
+             if (forceButtonClickTimer) {
+                // Double click detected
+                clearTimeout(forceButtonClickTimer);
+                forceButtonClickTimer = null;
+                openForceSettingsModal();
+            } else {
+                // Single click action
+                forceButtonClickTimer = setTimeout(() => {
+                    toggleForceLayout();
+                    forceButtonClickTimer = null;
+                }, 250); // Wait for a potential second click
+            }
+        });
 
         chargeSlider.addEventListener('input', (e) => chargeValue.textContent = e.target.value);
         linkSlider.addEventListener('input', (e) => linkValue.textContent = e.target.value);
