@@ -52,6 +52,11 @@
             stroke: #4338ca; /* indigo-700 */
             stroke-width: 3px;
         }
+        .node.drop-target rect {
+            stroke: #22c55e; /* green-500 */
+            stroke-width: 4px;
+            stroke-dasharray: 8 4;
+        }
         .node.dragging {
             cursor: grab;
         }
@@ -220,7 +225,6 @@
     <button id="help-button" class="action-cluster ui-button top-4 right-4" aria-label="Help and instructions">?</button>
     <input type="file" id="import-input" class="hidden" accept=".json" aria-hidden="true">
     
-    <!-- UI Buttons -->
     <button id="edit-button" class="action-cluster ui-button top-4 left-4" aria-label="Edit selected node">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
@@ -340,6 +344,7 @@
                 </li>
                 <li><strong>Canvas Interaction:</strong>
                     <ul>
+                        <li>- Drag one node on top of another to make it a child of that node.</li>
                         <li>- Click and drag any node to reposition it. The other nodes will react and move to avoid collisions. A dragged node will stay where you leave it.</li>
                         <li>- Use your mouse wheel or trackpad to zoom. Click and drag the background to pan the view.</li>
                     </ul>
@@ -598,6 +603,7 @@
         let selectedNodes = [];
         let activeParentForInsertion = null;
         let previousActiveElement;
+        let potentialDropTarget = null;
         
         // --- Force Simulation State ---
         let isForceActive = true;
@@ -1482,6 +1488,35 @@ Synthesized Document:`;
             }
         }
         
+        // --- Helper for Drag & Drop ---
+        function findDropTarget(draggedNode) {
+            let target = null;
+            const { x: draggedX, y: draggedY } = draggedNode;
+
+            // Find the node we are hovering over
+            for (const n of allNodes) {
+                // Exclude self and parent from being drop targets
+                if (n === draggedNode || n === draggedNode.parent) {
+                    continue;
+                }
+                // Prevent dropping a node onto one of its own descendants
+                if (n.ancestors().includes(draggedNode)) {
+                    continue;
+                }
+                
+                const isOver = draggedX > n.x - n.width / 2 &&
+                       draggedX < n.x + n.width / 2 &&
+                       draggedY > n.y - n.height / 2 &&
+                       draggedY < n.y + n.height / 2;
+
+                if (isOver) {
+                    target = n;
+                    break; // Found a target, no need to check others
+                }
+            }
+            return target;
+        }
+        
         // --- Drag & Drop Handlers ---
         function dragstarted(event, d) {
             if (event.sourceEvent.target.closest('.add-child-button')) {
@@ -1495,12 +1530,27 @@ Synthesized Document:`;
             d.fx = d.x;
             d.fy = d.y;
             d3.select(this).raise().classed("dragging", true);
+            potentialDropTarget = null; // Reset on new drag
         }
 
         function dragged(event, d) {
             if (d.isButtonClick) return;
             d.fx = event.x;
             d.fy = event.y;
+
+            // New drop target detection logic
+            const currentTarget = findDropTarget(d);
+            
+            if (potentialDropTarget && potentialDropTarget !== currentTarget) {
+                d3.select(`a.node[data-id="${potentialDropTarget.data._id}"]`).classed('drop-target', false);
+            }
+
+            potentialDropTarget = currentTarget;
+            
+            if (potentialDropTarget) {
+                d3.select(`a.node[data-id="${potentialDropTarget.data._id}"]`).classed('drop-target', true);
+            }
+
             if(!isForceActive) {
                 d.x = d.fx;
                 d.y = d.fy;
@@ -1516,36 +1566,1783 @@ Synthesized Document:`;
 
             if (isForceActive && !event.active) simulation.alphaTarget(0);
             d3.select(this).classed("dragging", false);
-
-            const dist = Math.hypot(event.x - d.dragStartX, event.y - d.dragStartY);
             
-            if (dist > 5) { // It was a drag
-                 const nodeData = await idb.get(d.data._id);
-                 nodeData.fx = d.fx;
-                 nodeData.fy = d.fy;
-                 await idb.set(nodeData);
-            } else { // It was a click
+            if (potentialDropTarget) {
+                d3.select(`a.node[data-id="${potentialDropTarget.data._id}"]`).classed('drop-target', false);
+            }
+
+            // Check if we dropped on a valid target
+            if (potentialDropTarget) {
+                // Reparenting logic
+                const oldParent = d.parent;
+                const newParent = potentialDropTarget;
+
+                // 1. Remove from old parent's children array
+                if (oldParent) {
+                    oldParent.data.children = oldParent.data.children.filter(child => child._id !== d.data._id);
+                    if (oldParent.data.children.length === 0) {
+                        oldParent.data.children = null;
+                    }
+                } else {
+                    // It was a root node, remove it from the roots array
+                    roots = roots.filter(r => r.data._id !== d.data._id);
+                }
+
+                // 2. Add to new parent's children array
+                if (!newParent.data.children) {
+                    newParent.data.children = [];
+                }
+                newParent.data.children.push(d.data);
+
+                // 3. Un-fix the node's position and update DB
                 d.fx = null;
                 d.fy = null;
-                 const nodeData = await idb.get(d.data._id);
-                 nodeData.fx = null;
-                 nodeData.fy = null;
-                 await idb.set(nodeData);
+                const nodeData = await idb.get(d.data._id);
+                nodeData.fx = null;
+                nodeData.fy = null;
+                await idb.set(nodeData);
 
-                if (isForceActive) simulation.alpha(1).restart();
+                // 4. Trigger a full update
+                await update();
+
+            } else {
+                // Original logic for click vs. drag-to-pin
+                const dist = Math.hypot(event.x - d.dragStartX, event.y - d.dragStartY);
                 
-                // Handle click selection logic
-                if (multiSelectMode || event.sourceEvent.shiftKey) {
-                    const index = selectedNodes.findIndex(n => n.data._id === d.data._id);
-                    if (index > -1) selectedNodes.splice(index, 1);
-                    else selectedNodes.push(d);
-                } else {
-                    selectedNodes = [d];
+                if (dist > 5) { // It was a drag-to-pin
+                     const nodeData = await idb.get(d.data._id);
+                     nodeData.fx = d.fx;
+                     nodeData.fy = d.fy;
+                     await idb.set(nodeData);
+                } else { // It was a click
+                    d.fx = null;
+                    d.fy = null;
+                     const nodeData = await idb.get(d.data._id);
+                     nodeData.fx = null;
+                     nodeData.fy = null;
+                     await idb.set(nodeData);
+
+                    if (isForceActive) simulation.alpha(1).restart();
+                    
+                    // Handle click selection logic
+                    if (multiSelectMode || event.sourceEvent.shiftKey) {
+                        const index = selectedNodes.findIndex(n => n.data._id === d.data._id);
+                        if (index > -1) selectedNodes.splice(index, 1);
+                        else selectedNodes.push(d);
+                    } else {
+                        selectedNodes = [d];
+                    }
+                    nodeGroup.selectAll("a.node").classed("selected", n => selectedNodes.some(sn => sn.data._id === n.data._id));
+                    const nodeToFocus = this;
+                    setTimeout(() => nodeToFocus.focus(), 0);
                 }
-                nodeGroup.selectAll("a.node").classed("selected", n => selectedNodes.some(sn => sn.data._id === n.data._id));
-                const nodeToFocus = this;
-                setTimeout(() => nodeToFocus.focus(), 0);
             }
+
+            // Cleanup
+            potentialDropTarget = null;
+            delete d.dragStartX;
+            delete d.dragStartY;
+        }
+
+        // --- Keyboard Handlers ---
+        function handleNodeKeydown(event, d) {
+            switch (event.key) {
+                case 'Enter':
+                    event.preventDefault();
+                    if (event.shiftKey) generateChildren(d);
+                    else { activeParentForInsertion = d; showModal(addNodeModal, addNodeInput); }
+                    break;
+                case ' ':
+                    event.preventDefault();
+                    if (multiSelectMode || event.shiftKey) {
+                        const index = selectedNodes.findIndex(n => n.data._id === d.data._id);
+                        if (index > -1) selectedNodes.splice(index, 1);
+                        else selectedNodes.push(d);
+                    } else {
+                        selectedNodes = [d];
+                    }
+                    nodeGroup.selectAll("a.node").classed("selected", n => selectedNodes.some(sn => sn.data._id === n.data._id));
+                    break;
+            }
+        }
+        window.addEventListener('keydown', async (event) => {
+            const targetNodeName = event.target.nodeName;
+            if (targetNodeName === 'INPUT' || targetNodeName === 'TEXTAREA') return;
+            const key = event.key.toLowerCase();
+            if (event.shiftKey && key === 'n') {
+                event.preventDefault();
+                roots = []; selectedNodes = [];
+                await update();
+                showModal(initialPromptContainer, promptInput);
+                promptInput.value = '';
+            } else if (event.shiftKey && key === 'e') { event.preventDefault(); exportMindMap();
+            } else if (event.shiftKey && key === 'i') { event.preventDefault(); importInput.click();
+            } else if (key === 'delete' || key === 'backspace' || key === 'd') { deleteSelectedNodes();
+            } else if (key === 'e') { openEditModal();
+            } else if (key === 'escape') {
+                selectedNodes = [];
+                nodeGroup.selectAll("a.node").classed("selected", false);
+                exportContainer.classList.remove('menu-visible');
+                addContainer.classList.remove('menu-visible');
+                if (multiSelectMode) {
+                    multiSelectMode = false;
+                    updateMultiSelectIndicator();
+                    showToast('Multi-select mode disabled.');
+                }
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            simulation.force("x", d3.forceX(window.innerWidth / 2).strength(0.02));
+            simulation.force("y", d3.forceY(window.innerHeight / 2).strength(0.02));
+            if(isForceActive) simulation.alpha(0.3).restart();
+        });
+        
+        idb.initDb().then(() => console.log("Database initialized."));
+    </script>
+</body>
+</htmlii<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Mind Map Generator (Force Layout)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+        /* Focus style for UI elements outside the SVG */
+        button:focus-visible, input:focus-visible, textarea:focus-visible, input[type="range"]:focus-visible {
+            outline: 3px solid #4338ca; /* indigo-700 */
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+        /* Explicitly remove the default outline on the focused node group */
+        .node:focus {
+            outline: none;
+        }
+        .node rect {
+            stroke-width: 2px;
+            stroke: #94a3b8; /* slate-400 */
+            rx: 8px;
+            ry: 8px;
+            transition: stroke 0.3s, stroke-width 0.3s;
+        }
+        .node-text-div {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            text-align: center;
+            word-break: break-word;
+            padding: 8px;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+        .node.selected rect {
+            stroke: #4f46e5; /* indigo-600 */
+            stroke-width: 3px;
+        }
+        /* Specific focus style applied via class to the rect */
+        .node.focused rect {
+            stroke: #4338ca; /* indigo-700 */
+            stroke-width: 3px;
+        }
+        .node.drop-target rect {
+            stroke: #22c55e; /* green-500 */
+            stroke-width: 4px;
+            stroke-dasharray: 8 4;
+        }
+        .node.dragging {
+            cursor: grab;
+        }
+        .node.loading rect, .node.processing rect {
+            stroke-dasharray: 4;
+            animation: dash 1s linear infinite;
+        }
+        @keyframes dash {
+            to {
+                stroke-dashoffset: -8;
+            }
+        }
+        .link {
+            fill: none;
+            stroke: #94a3b8; /* slate-400 */
+            stroke-width: 2px;
+        }
+        .add-child-button circle {
+            fill: #4f46e5; /* indigo-600 */
+            stroke: #f8fafc; /* slate-50 */
+            stroke-width: 2px;
+        }
+        .add-child-button text {
+            fill: white;
+            font-size: 20px;
+            font-weight: bold;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        .modal-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: rgba(0,0,0,0.5);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 100;
+        }
+        .summary-box {
+            background-color: #f1f5f9; /* slate-100 */
+            border: 1px solid #e2e8f0; /* slate-200 */
+            border-radius: 0.375rem;
+            padding: 0.75rem;
+            font-size: 0.875rem;
+            color: #475569; /* slate-600 */
+            text-align: left;
+            max-height: 8rem;
+            overflow-y: auto;
+        }
+        .ui-button {
+            position: relative; 
+            z-index: 50;
+            width: 3rem;
+            height: 3rem;
+            border-radius: 9999px;
+            background-color: #4f46e5; /* indigo-600 */
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: background-color 0.3s, opacity 0.3s;
+        }
+        .ui-button:hover {
+            background-color: #4338ca; /* indigo-700 */
+        }
+        .ui-button.paused {
+             background-color: #64748b; /* slate-500 */
+        }
+        .ui-button.paused:hover {
+            background-color: #475569; /* slate-600 */
+        }
+        .ui-button svg {
+            width: 1.5rem;
+            height: 1.5rem;
+        }
+        .help-modal-content ul li {
+            margin-bottom: 0.75rem;
+        }
+        .help-modal-content kbd {
+            background-color: #e2e8f0; /* slate-200 */
+            color: #1e293b; /* slate-800 */
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-family: monospace;
+            font-weight: 600;
+        }
+        .prose { color: #334155; }
+        .prose h1, .prose h2, .prose h3 { margin-top: 1em; margin-bottom: 0.5em; font-weight: 600; line-height: 1.2; }
+        .prose h1 { font-size: 1.5em; }
+        .prose h2 { font-size: 1.25em; }
+        .prose h3 { font-size: 1.1em; }
+        .prose p { margin-bottom: 1em; }
+        .prose ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; }
+        .prose ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 1em; }
+        .prose li { margin-bottom: 0.25em; }
+        .prose a { color: #4f46e5; }
+        .prose code { background-color: #e2e8f0; padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.9em; }
+        .prose pre { background-color: #e2e8f0; padding: 0.75rem; border-radius: 0.375rem; overflow-x: auto; }
+        .prose blockquote { border-left: 4px solid #cbd5e1; padding-left: 1em; margin-left: 0; font-style: italic; color: #64748b; }
+        
+        .action-cluster {
+            position: fixed;
+            z-index: 51;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .export-container { top: 4.5rem; left: 1rem; }
+        
+        #export-options-wrapper {
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            left: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            opacity: 0;
+            transform: translateY(-1rem);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: none;
+        }
+
+        .export-container.menu-visible #export-options-wrapper {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .layout-container { top: 8rem; left: 1rem; }
+
+        .add-container { bottom: 1rem; right: 1rem; }
+
+        #add-options-wrapper {
+            position: absolute;
+            bottom: calc(100% + 0.5rem);
+            left: 0;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 0.5rem;
+            opacity: 0;
+            transform: translateY(1rem);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: none;
+        }
+
+        .add-container.menu-visible #add-options-wrapper {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body class="bg-slate-100">
+
+    <div id="multi-select-indicator" class="fixed top-4 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-4 py-2 rounded-full shadow-lg hidden z-50 transition-opacity duration-300">
+        Multi-Select Mode Active
+    </div>
+
+    <button id="help-button" class="action-cluster ui-button top-4 right-4" aria-label="Help and instructions">?</button>
+    <input type="file" id="import-input" class="hidden" accept=".json" aria-hidden="true">
+    
+    <button id="edit-button" class="action-cluster ui-button top-4 left-4" aria-label="Edit selected node">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+        </svg>
+    </button>
+
+    <div id="export-container" class="action-cluster export-container">
+        <button id="export-menu-trigger" class="ui-button" aria-label="Open export menu">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+        </button>
+        <div id="export-options-wrapper" class="!top-0 !left-[calc(100%+0.5rem)] !flex-row">
+            <button id="export-json-button" class="ui-button" aria-label="Export as JSON">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m-1.5 18h12.75a1.125 1.125 0 0 0 1.125-1.125V11.25a9 9 0 0 0-9-9H5.625A1.125 1.125 0 0 0 4.5 3.375v17.25c0 .621.504 1.125 1.125 1.125Z" />
+                   <text x="12" y="18" font-size="5" font-family="monospace" text-anchor="middle" fill="currentColor" style="font-weight:bold;">JSON</text>
+                </svg>
+            </button>
+            <button id="export-notes-button" class="ui-button" aria-label="Export notes from selected chain">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                </svg>
+            </button>
+             <button id="export-svg-button" class="ui-button" aria-label="Export as SVG image">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div id="layout-container" class="action-cluster layout-container">
+        <button id="force-toggle-button" class="ui-button" aria-label="Toggle physics layout">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0-2.25l2.25 1.313M8.25 12.75l-2.25 1.313M8.25 12.75l2.25-1.313M8.25 12.75V15m7.5-2.25l2.25-1.313M15.75 12.75V15m0-2.25l-2.25 1.313m-3-10.5l2.25-1.313M12 5.25v2.25m0-2.25l-2.25 1.313M5.25 7.5l2.25-1.313M5.25 7.5L3 6.187M5.25 7.5v2.25m13.5-2.25l-2.25-1.313M18.75 7.5l2.25 1.313M18.75 7.5v2.25" />
+            </svg>
+        </button>
+    </div>
+
+    <button id="delete-button" class="action-cluster ui-button bottom-4 left-4" aria-label="Delete selected node(s)">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 0 0-2.09 2.134v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+        </svg>
+    </button>
+    
+    <div id="add-container" class="action-cluster add-container">
+        <div id="add-options-wrapper">
+             <button id="add-button" class="ui-button" aria-label="Add child to selected node manually">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
+                </svg>
+            </button>
+            <button id="generate-button" class="ui-button" aria-label="Generate children for selected node">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" />
+                </svg>
+            </button>
+            <button id="add-root-button" class="ui-button" aria-label="Add new root node">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
+                </svg>
+            </button>
+        </div>
+        <button id="add-menu-trigger" class="ui-button" aria-label="Open add node menu">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+        </button>
+    </div>
+
+    <div id="help-modal" class="modal-container hidden" role="dialog" aria-modal="true" aria-labelledby="help-modal-title">
+        <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-2xl help-modal-content max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <h1 id="help-modal-title" class="text-2xl font-bold text-slate-800">How to Use the Mind Map</h1>
+                <button id="close-help-modal" class="text-3xl text-slate-500 hover:text-slate-800" aria-label="Close help modal">&times;</button>
+            </div>
+            <ul class="text-slate-700 text-left space-y-4">
+                <li><strong>Automatic Layout:</strong> The mind map now uses a physics simulation to automatically arrange nodes and prevent them from overlapping.</li>
+                <li><strong>Physics Control:</strong>
+                    <ul>
+                        <li>- A new **Force** button has been added to the export cluster. Click it to toggle the physics on and off.</li>
+                        <li>- **Long-press** the Force button to open a modal where you can adjust the sensitivity of the repulsion, link distance, and collision forces.</li>
+                    </ul>
+                </li>
+                <li><strong>Start:</strong> Enter a central topic and click "Generate" to begin your mind map.</li>
+                <li><strong>UI Buttons:</strong> Click the background to toggle the floating action buttons.</li>
+                <li><strong>New Map:</strong> Press <kbd>Shift</kbd> + <kbd>N</kbd> to start a new map.</li>
+                <li><strong>Import/Export:</strong>
+                    <ul>
+                        <li>- Press <kbd>Shift</kbd> + <kbd>I</kbd> to import a map from a JSON file.</li>
+                        <li>- Click the **Export** button to toggle export options (JSON, Notes, SVG).</li>
+                        <li>- Select two nodes in a direct path, then use the **Export Notes** option to generate a Markdown document from that chain.</li>
+                    </ul>
+                </li>
+                 <li><strong>Adding Nodes:</strong>
+                    <ul>
+                        <li>- Click the **Add** button (<kbd>+</kbd>) to toggle the add menu.</li>
+                        <li>- Click the **New Root** button to start a new, independent mind map tree.</li>
+                        <li>- Select a node, then click the **Generate** button to create new sub-topics with AI.</li>
+                        <li>- Select a node, then click the **Manual Add** button to add a new child node yourself.</li>
+                    </ul>
+                </li>
+                <li><strong>Selection:</strong>
+                    <ul>
+                        <li>- **Long-press** (click and hold for 500ms) on any node to toggle **Multi-Select Mode**.</li>
+                        <li>- In Multi-Select Mode, simply click nodes to add or remove them from the selection.</li>
+                        <li>- When not in multi-select mode, hold <kbd>Shift</kbd> and click or press <kbd>Spacebar</kbd> on nodes to add them to your selection.</li>
+                        <li>- Press <kbd>Esc</kbd> to deselect all nodes and exit Multi-Select Mode.</li>
+                    </ul>
+                </li>
+                <li><strong>Editing:</strong>
+                    <ul>
+                        <li>- Select a single node and press the <kbd>E</kbd> key or click the **Edit** button to edit its title, notes, and colors.</li>
+                        <li>- Select multiple nodes and press <kbd>E</kbd> or click the **Edit** button to change their colors simultaneously.</li>
+                    </ul>
+                </li>
+                <li><strong>Canvas Interaction:</strong>
+                    <ul>
+                        <li>- Drag one node on top of another to make it a child of that node.</li>
+                        <li>- Click and drag any node to reposition it. The other nodes will react and move to avoid collisions. A dragged node will stay where you leave it.</li>
+                        <li>- Use your mouse wheel or trackpad to zoom. Click and drag the background to pan the view.</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div id="initial-prompt-container" class="modal-container" role="dialog" aria-modal="true" aria-labelledby="initial-prompt-title">
+        <div class="bg-white p-8 rounded-lg shadow-2xl text-center w-full max-w-md">
+            <h1 id="initial-prompt-title" class="text-2xl font-bold text-slate-800 mb-4">Start your mind map</h1>
+            <p class="text-slate-600 mb-6" id="initial-prompt-desc">Enter a central topic to begin generating ideas.</p>
+            <form id="prompt-form">
+                <input type="text" id="prompt-input" class="w-full px-4 py-3 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="e.g., 'The History of Jazz Music'" aria-describedby="initial-prompt-desc">
+                <button type="submit" class="w-full mt-4 bg-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:bg-indigo-700 transition-colors duration-300">
+                    Generate
+                </button>
+            </form>
+            <div class="mt-4 text-slate-500">
+                or
+                <button id="import-button" class="font-medium text-indigo-600 hover:text-indigo-500">import a mind map</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="add-node-modal" class="modal-container hidden" role="dialog" aria-modal="true" aria-labelledby="add-node-title">
+        <div class="bg-white p-8 rounded-lg shadow-2xl text-center w-full max-w-md">
+            <h1 id="add-node-title" class="text-2xl font-bold text-slate-800 mb-4">Add Child Node</h1>
+            <p id="add-node-desc" class="text-slate-600 mb-6">Enter a name for the new topic.</p>
+            <form id="add-node-form">
+                <input type="text" id="add-node-input" class="w-full px-4 py-3 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="e.g., 'Key Influences'" aria-describedby="add-node-desc">
+                <div class="flex gap-4 mt-4">
+                    <button type="button" id="cancel-add-node" class="w-full bg-slate-200 text-slate-800 font-bold py-3 px-4 rounded-md hover:bg-slate-300 transition-colors duration-300">
+                        Cancel
+                    </button>
+                    <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:bg-indigo-700 transition-colors duration-300">
+                        Add Node
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="add-root-modal" class="modal-container hidden" role="dialog" aria-modal="true" aria-labelledby="add-root-title">
+        <div class="bg-white p-8 rounded-lg shadow-2xl text-center w-full max-w-md">
+            <h1 id="add-root-title" class="text-2xl font-bold text-slate-800 mb-4">Add New Root Topic</h1>
+            <p id="add-root-desc" class="text-slate-600 mb-6">Enter a name for the new mind map tree.</p>
+            <form id="add-root-form">
+                <input type="text" id="add-root-input" class="w-full px-4 py-3 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="e.g., 'Modern Art Movements'" aria-describedby="add-root-desc">
+                <div class="flex gap-4 mt-4">
+                    <button type="button" id="cancel-add-root" class="w-full bg-slate-200 text-slate-800 font-bold py-3 px-4 rounded-md hover:bg-slate-300 transition-colors duration-300">
+                        Cancel
+                    </button>
+                    <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:bg-indigo-700 transition-colors duration-300">
+                        Add Root
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="edit-node-modal" class="modal-container hidden" role="dialog" aria-modal="true" aria-labelledby="edit-node-title-heading">
+        <div class="bg-slate-50 p-8 rounded-lg shadow-2xl w-full max-w-lg max-h-[85%] overflow-y-auto">
+            <h1 id="edit-node-title-heading" class="text-2xl font-bold text-slate-800 mb-6 text-center">Edit Node</h1>
+            <form id="edit-node-form" class="space-y-4">
+                <div>
+                    <label for="edit-node-title-input" class="block text-sm font-medium text-slate-700">Title</label>
+                    <input type="text" id="edit-node-title-input" class="mt-1 w-full px-4 py-3 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                </div>
+                <div>
+                    <div class="flex justify-between items-center">
+                        <label for="edit-node-notes" class="block text-sm font-medium text-slate-700">Notes</label>
+                        <div>
+                            <button type="button" id="generate-notes-button" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed mr-4">Generate with AI</button>
+                            <button type="button" id="toggle-notes-view-button" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">Edit Raw</button>
+                        </div>
+                    </div>
+                    <div id="edit-node-notes-rendered" class="prose mt-1 w-full p-3 border border-slate-300 rounded-md bg-white max-h-[250px] min-h-[80px] overflow-y-auto"></div>
+                    <textarea id="edit-node-notes" rows="4" class="hidden mt-1 w-full px-4 py-3 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="edit-node-color-input" class="block text-sm font-medium text-slate-700">Node Color</label>
+                        <input type="color" id="edit-node-color-input" class="mt-1 w-full h-10 px-1 py-1 border border-slate-300 rounded-md cursor-pointer">
+                    </div>
+                    <div>
+                        <label for="edit-node-text-color-input" class="block text-sm font-medium text-slate-700">Text Color</label>
+                        <input type="color" id="edit-node-text-color-input" class="mt-1 w-full h-10 px-1 py-1 border border-slate-300 rounded-md cursor-pointer">
+                    </div>
+                </div>
+                <div id="summary-section" class="hidden space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700">Parent Context (Raw Summary)</label>
+                        <div id="edit-node-context" class="summary-box mt-1"></div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700">AI-Generated Summary</label>
+                        <div id="edit-node-ai-summary" class="summary-box mt-1"></div>
+                    </div>
+                </div>
+                <div class="flex gap-4 pt-4">
+                    <button type="button" id="cancel-edit-node" class="w-full bg-slate-200 text-slate-800 font-bold py-3 px-4 rounded-md hover:bg-slate-300 transition-colors duration-300">
+                        Cancel
+                    </button>
+                    <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:bg-indigo-700 transition-colors duration-300">
+                        Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="multi-edit-modal" class="modal-container hidden" role="dialog" aria-modal="true" aria-labelledby="multi-edit-title-heading">
+        <div class="bg-slate-50 p-8 rounded-lg shadow-2xl w-full max-w-sm">
+            <h1 id="multi-edit-title-heading" class="text-2xl font-bold text-slate-800 mb-6 text-center">Edit Multiple Nodes</h1>
+            <form id="multi-edit-form" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="multi-edit-color-input" class="block text-sm font-medium text-slate-700">Node Color</label>
+                        <input type="color" id="multi-edit-color-input" value="#f8fafc" class="mt-1 w-full h-10 px-1 py-1 border border-slate-300 rounded-md cursor-pointer">
+                    </div>
+                    <div>
+                        <label for="multi-edit-text-color-input" class="block text-sm font-medium text-slate-700">Text Color</label>
+                        <input type="color" id="multi-edit-text-color-input" value="#0f172a" class="mt-1 w-full h-10 px-1 py-1 border border-slate-300 rounded-md cursor-pointer">
+                    </div>
+                </div>
+                <div class="flex gap-4 pt-4">
+                    <button type="button" id="cancel-multi-edit-node" class="w-full bg-slate-200 text-slate-800 font-bold py-3 px-4 rounded-md hover:bg-slate-300 transition-colors duration-300">
+                        Cancel
+                    </button>
+                    <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:bg-indigo-700 transition-colors duration-300">
+                        Apply
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="force-settings-modal" class="modal-container hidden" role="dialog" aria-modal="true" aria-labelledby="force-settings-title-heading">
+        <div class="bg-slate-50 p-8 rounded-lg shadow-2xl w-full max-w-md">
+            <h1 id="force-settings-title-heading" class="text-2xl font-bold text-slate-800 mb-6 text-center">Force Settings</h1>
+            <form id="force-settings-form" class="space-y-6">
+                <div>
+                    <label for="charge-strength-slider" class="block text-sm font-medium text-slate-700">Repulsion Strength</label>
+                    <input type="range" id="charge-strength-slider" min="-1000" max="0" step="10" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                    <span id="charge-strength-value" class="text-sm text-slate-500"></span>
+                </div>
+                <div>
+                    <label for="link-distance-slider" class="block text-sm font-medium text-slate-700">Link Distance</label>
+                    <input type="range" id="link-distance-slider" min="20" max="300" step="5" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                    <span id="link-distance-value" class="text-sm text-slate-500"></span>
+                </div>
+                <div>
+                    <label for="collision-strength-slider" class="block text-sm font-medium text-slate-700">Collision Strength</label>
+                    <input type="range" id="collision-strength-slider" min="0" max="1" step="0.05" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                    <span id="collision-strength-value" class="text-sm text-slate-500"></span>
+                </div>
+                <div class="flex gap-4 pt-4">
+                    <button type="button" id="cancel-force-settings" class="w-full bg-slate-200 text-slate-800 font-bold py-3 px-4 rounded-md hover:bg-slate-300 transition-colors duration-300">
+                        Cancel
+                    </button>
+                    <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:bg-indigo-700 transition-colors duration-300">
+                        Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed top-5 right-5 bg-red-500 text-white py-2 px-4 rounded-lg shadow-md hidden" role="alert">
+        <p id="toast-message"></p>
+    </div>
+
+    <svg id="mind-map-svg" width="100vw" height="100vh"></svg>
+
+    <script>
+        // --- IndexedDB Helper ---
+        const idb = {
+            db: null,
+            initDb() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open("MindMapStorage", 1);
+                    request.onerror = (event) => reject("Error opening IndexedDB");
+                    request.onsuccess = (event) => {
+                        this.db = event.target.result;
+                        resolve(this.db);
+                    };
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+                        db.createObjectStore("nodeData", { keyPath: "_id" });
+                    };
+                });
+            },
+            async set(data) {
+                if (!this.db) await this.initDb();
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction(["nodeData"], "readwrite");
+                    const store = transaction.objectStore("nodeData");
+                    const request = store.put(data);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            async get(id) {
+                if (!this.db) await this.initDb();
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction(["nodeData"], "readonly");
+                    const store = transaction.objectStore("nodeData");
+                    const request = store.get(id);
+                    request.onsuccess = () => resolve(request.result || { _id: id });
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            async getAll() {
+                if (!this.db) await this.initDb();
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction(["nodeData"], "readonly");
+                    const store = transaction.objectStore("nodeData");
+                    const request = store.getAll();
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            async clearAll() {
+                if (!this.db) await this.initDb();
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction(["nodeData"], "readwrite");
+                    const store = transaction.objectStore("nodeData");
+                    const request = store.clear();
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+            },
+            async delete(id) {
+                if (!this.db) await this.initDb();
+                return new Promise((resolve, reject) => {
+                    const transaction = this.db.transaction(["nodeData"], "readwrite");
+                    const store = transaction.objectStore("nodeData");
+                    const request = store.delete(id);
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+            }
+        };
+
+        const svg = d3.select("#mind-map-svg");
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const g = svg.append("g");
+        const linkGroup = g.append("g").attr("class", "links");
+        const nodeGroup = g.append("g").attr("class", "nodes");
+
+        let roots = [];
+        let allNodes = [];
+        let allLinks = [];
+        let selectedNodes = [];
+        let activeParentForInsertion = null;
+        let previousActiveElement;
+        let potentialDropTarget = null;
+        
+        // --- Force Simulation State ---
+        let isForceActive = true;
+        let forceSettings = {
+            charge: -400,
+            linkDistance: 100,
+            collision: 0.9
+        };
+        let forceToggleButtonLongPressTimer = null;
+
+        let multiSelectMode = false;
+        let longPressTimer = null;
+        let longPressOccurred = false;
+
+        const zoom = d3.zoom().scaleExtent([0.1, 2]).on("zoom", (event) => g.attr("transform", event.transform));
+        svg.call(zoom);
+
+        // --- D3 Force Simulation ---
+        const linkGenerator = d3.linkHorizontal().x(d => d.x).y(d => d.y);
+        const simulation = d3.forceSimulation()
+            .force("link", d3.forceLink().id(d => d.data._id).distance(forceSettings.linkDistance).strength(0.5))
+            .force("charge", d3.forceManyBody().strength(forceSettings.charge))
+            .force("collide", d3.forceCollide().radius(d => Math.max(d.width, d.height) / 2 + 15).strength(forceSettings.collision))
+            .force("x", d3.forceX(width / 2).strength(0.02))
+            .force("y", d3.forceY(height / 2).strength(0.02))
+            .on("tick", ticked);
+
+        function ticked() {
+            linkGroup.selectAll("path.link")
+                .attr("d", linkGenerator);
+
+            nodeGroup.selectAll("a.node")
+                .attr("transform", d => `translate(${d.x},${d.y})`);
+        }
+        
+        // --- UI Elements ---
+        const initialPromptContainer = document.getElementById('initial-prompt-container');
+        const addNodeModal = document.getElementById('add-node-modal');
+        const addRootModal = document.getElementById('add-root-modal');
+        const editNodeModal = document.getElementById('edit-node-modal');
+        const multiEditModal = document.getElementById('multi-edit-modal');
+        const helpModal = document.getElementById('help-modal');
+        const forceSettingsModal = document.getElementById('force-settings-modal');
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toast-message');
+        const promptForm = document.getElementById('prompt-form');
+        const addNodeForm = document.getElementById('add-node-form');
+        const addRootForm = document.getElementById('add-root-form');
+        const editNodeForm = document.getElementById('edit-node-form');
+        const multiEditForm = document.getElementById('multi-edit-form');
+        const forceSettingsForm = document.getElementById('force-settings-form');
+        const promptInput = document.getElementById('prompt-input');
+        const addNodeInput = document.getElementById('add-node-input');
+        const addRootInput = document.getElementById('add-root-input');
+        const editNodeTitleInput = document.getElementById('edit-node-title-input');
+        const editNodeNotesInput = document.getElementById('edit-node-notes');
+        const editNodeNotesRendered = document.getElementById('edit-node-notes-rendered');
+        const toggleNotesViewButton = document.getElementById('toggle-notes-view-button');
+        const editNodeColorInput = document.getElementById('edit-node-color-input');
+        const editNodeTextColorInput = document.getElementById('edit-node-text-color-input');
+        const multiEditColorInput = document.getElementById('multi-edit-color-input');
+        const multiEditTextColorInput = document.getElementById('multi-edit-text-color-input');
+        const generateNotesButton = document.getElementById('generate-notes-button');
+        const editNodeContextDiv = document.getElementById('edit-node-context');
+        const editNodeAiSummaryDiv = document.getElementById('edit-node-ai-summary');
+        const summarySection = document.getElementById('summary-section');
+        const importInput = document.getElementById('import-input');
+        const cancelAddNodeBtn = document.getElementById('cancel-add-node');
+        const cancelAddRootBtn = document.getElementById('cancel-add-root');
+        const cancelEditNodeBtn = document.getElementById('cancel-edit-node');
+        const cancelMultiEditBtn = document.getElementById('cancel-multi-edit-node');
+        const cancelForceSettingsBtn = document.getElementById('cancel-force-settings');
+        const helpButton = document.getElementById('help-button');
+        const closeHelpModalBtn = document.getElementById('close-help-modal');
+        const importButton = document.getElementById('import-button');
+        const editButton = document.getElementById('edit-button');
+        const exportJsonButton = document.getElementById('export-json-button');
+        const exportNotesButton = document.getElementById('export-notes-button');
+        const exportSvgButton = document.getElementById('export-svg-button');
+        const deleteButton = document.getElementById('delete-button');
+        const addButton = document.getElementById('add-button');
+        const generateButton = document.getElementById('generate-button');
+        const addRootButton = document.getElementById('add-root-button');
+        const exportMenuTrigger = document.getElementById('export-menu-trigger');
+        const addMenuTrigger = document.getElementById('add-menu-trigger');
+        const exportContainer = document.getElementById('export-container');
+        const addContainer = document.getElementById('add-container');
+        const multiSelectIndicator = document.getElementById('multi-select-indicator');
+        const forceToggleButton = document.getElementById('force-toggle-button');
+        const chargeSlider = document.getElementById('charge-strength-slider');
+        const chargeValue = document.getElementById('charge-strength-value');
+        const linkSlider = document.getElementById('link-distance-slider');
+        const linkValue = document.getElementById('link-distance-value');
+        const collisionSlider = document.getElementById('collision-strength-slider');
+        const collisionValue = document.getElementById('collision-strength-value');
+
+        // --- Accessibility & Modal Management ---
+        function trapFocus(element) {
+            const focusableEls = Array.from(element.querySelectorAll('a[href]:not([disabled]), button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled])'));
+            if (focusableEls.length === 0) return;
+            const firstFocusableEl = focusableEls[0];
+            const lastFocusableEl = focusableEls[focusableEls.length - 1];
+            element.addEventListener('keydown', function(e) {
+                if (e.key !== 'Tab') return;
+                if (e.shiftKey) { if (document.activeElement === firstFocusableEl) { lastFocusableEl.focus(); e.preventDefault(); } }
+                else { if (document.activeElement === lastFocusableEl) { firstFocusableEl.focus(); e.preventDefault(); } }
+            });
+        }
+
+        function showModal(modalElement, focusElement) {
+            previousActiveElement = document.activeElement;
+            modalElement.classList.remove('hidden');
+            if (focusElement) focusElement.focus();
+            else { const firstFocusable = modalElement.querySelector('button, input, textarea, select'); if (firstFocusable) firstFocusable.focus(); }
+            trapFocus(modalElement);
+        }
+
+        function hideModal(modalElement) {
+            modalElement.classList.add('hidden');
+            if (previousActiveElement) previousActiveElement.focus();
+        }
+
+        helpButton.addEventListener('click', () => showModal(helpModal, closeHelpModalBtn));
+        closeHelpModalBtn.addEventListener('click', () => hideModal(helpModal));
+        helpModal.addEventListener('click', (e) => { if (e.target === helpModal) hideModal(helpModal); });
+
+        // --- Initial Setup ---
+        function resetView() {
+            const centerTransform = d3.zoomIdentity.translate(width / 2, height / 2).scale(0.8);
+            svg.call(zoom.transform, centerTransform);
+        }
+        resetView();
+
+        // --- Form & Button Listeners ---
+        promptForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const initialPrompt = promptInput.value.trim();
+            if (initialPrompt) {
+                hideModal(initialPromptContainer);
+                await idb.clearAll();
+                roots = [];
+                selectedNodes = [];
+                const rootData = { name: initialPrompt, children: null, _id: 'root-0' };
+                await idb.set({ _id: rootData._id, notes: '', color: '#f8fafc', textColor: '#0f172a' });
+                const firstRoot = d3.hierarchy(rootData);
+                firstRoot.x = height / 2;
+                firstRoot.y = width / 2;
+                firstRoot.generating = true;
+                roots = [firstRoot];
+                await update();
+                generateChildren(firstRoot);
+            }
+        });
+
+        addNodeForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newNodeName = addNodeInput.value.trim();
+            if (newNodeName && activeParentForInsertion) {
+                addChildNode(newNodeName, activeParentForInsertion);
+            }
+            addNodeInput.value = '';
+            hideModal(addNodeModal);
+        });
+
+        addRootForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newRootName = addRootInput.value.trim();
+            if (newRootName) {
+                const newRootData = { name: newRootName, children: null, _id: crypto.randomUUID() };
+                await idb.set({ _id: newRootData._id, notes: '', color: '#f8fafc', textColor: '#0f172a' });
+                const newRoot = d3.hierarchy(newRootData);
+                const transform = d3.zoomTransform(svg.node());
+                newRoot.x = (Math.random() * height - transform.y) / transform.k;
+                newRoot.y = (Math.random() * width - transform.x) / transform.k;
+                roots.push(newRoot);
+                await update();
+            }
+            addRootInput.value = '';
+            hideModal(addRootModal);
+        });
+        
+        editNodeForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (selectedNodes.length !== 1) return;
+            const selectedNode = selectedNodes[0];
+            const newTitle = editNodeTitleInput.value.trim();
+            const newNotes = editNodeNotesInput.value;
+            const newColor = editNodeColorInput.value;
+            const newTextColor = editNodeTextColorInput.value;
+
+            if (newTitle) {
+                selectedNode.data.name = newTitle;
+                const nodeData = await idb.get(selectedNode.data._id);
+                nodeData.notes = newNotes;
+                nodeData.color = newColor;
+                nodeData.textColor = newTextColor;
+                await idb.set(nodeData);
+                await update();
+            }
+            hideModal(editNodeModal);
+        });
+
+        multiEditForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newColor = multiEditColorInput.value;
+            const newTextColor = multiEditTextColorInput.value;
+            const promises = selectedNodes.map(async (node) => {
+                const nodeData = await idb.get(node.data._id);
+                nodeData.color = newColor;
+                nodeData.textColor = newTextColor;
+                return idb.set(nodeData);
+            });
+            await Promise.all(promises);
+            hideModal(multiEditModal);
+            await update();
+        });
+
+        generateNotesButton.addEventListener('click', async () => {
+            const selectedNode = selectedNodes[0];
+            if (!selectedNode) return;
+
+            generateNotesButton.disabled = true;
+            generateNotesButton.textContent = 'Generating...';
+
+            try {
+                const ancestors = selectedNode.ancestors().reverse();
+                const contextPath = ancestors.map(n => n.data.name).join(' -> ');
+                
+                let parentSummaries = [];
+                for (const ancestor of ancestors) {
+                    if (ancestor.data._id === selectedNode.data._id) continue;
+                    const nodeData = await idb.get(ancestor.data._id);
+                    if (nodeData && nodeData.aiSummary) {
+                        parentSummaries.push({ node: ancestor.data.name, summary: nodeData.aiSummary });
+                    }
+                }
+
+                const summariesText = parentSummaries.map(s => `Topic: ${s.node}\nSummary: ${s.summary}`).join('\n\n');
+                const prompt = `Task: Generate academic-style notes in Markdown format.
+Tone: Formal, objective, informative.
+Audience: Academic.
+Instructions:
+- Do not use introductions, greetings, poetic language, or address the user directly.
+- Synthesize information from the provided parent summaries to give context to the final topic.
+- Elaborate on the final topic with detailed, well-structured notes.
+- The output must be a clean, properly structured Markdown document.
+
+Mind Map Path: ${contextPath}
+
+Parent Summaries:
+${summariesText}
+
+Generate detailed notes for the final topic, "${selectedNode.data.name}", below:`;
+                
+                const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!response.ok) throw new Error('Failed to generate notes from AI.');
+                
+                const result = await response.json();
+                const notesText = result.candidates[0].content.parts[0].text;
+                editNodeNotesInput.value = notesText;
+                editNodeNotesRendered.innerHTML = marked.parse(notesText);
+
+            } catch (error) {
+                console.error('Error generating notes:', error);
+                showToast(error.message || 'Could not generate notes.');
+            } finally {
+                generateNotesButton.disabled = false;
+                generateNotesButton.textContent = 'Generate with AI';
+            }
+        });
+
+        toggleNotesViewButton.addEventListener('click', () => {
+            const isEditing = editNodeNotesInput.classList.contains('hidden');
+            if (isEditing) {
+                editNodeNotesRendered.classList.add('hidden');
+                editNodeNotesInput.classList.remove('hidden');
+                toggleNotesViewButton.textContent = 'Preview';
+                editNodeNotesInput.focus();
+            } else {
+                editNodeNotesRendered.innerHTML = marked.parse(editNodeNotesInput.value);
+                editNodeNotesRendered.classList.remove('hidden');
+                editNodeNotesInput.classList.add('hidden');
+                toggleNotesViewButton.textContent = 'Edit Raw';
+            }
+        });
+
+        cancelAddNodeBtn.addEventListener('click', () => hideModal(addNodeModal));
+        cancelAddRootBtn.addEventListener('click', () => hideModal(addRootModal));
+        cancelEditNodeBtn.addEventListener('click', () => hideModal(editNodeModal));
+        cancelMultiEditBtn.addEventListener('click', () => hideModal(multiEditModal));
+        cancelForceSettingsBtn.addEventListener('click', () => hideModal(forceSettingsModal));
+        
+        editButton.addEventListener('click', openEditModal);
+        exportJsonButton.addEventListener('click', exportMindMap);
+        exportNotesButton.addEventListener('click', exportNotesForChain);
+        exportSvgButton.addEventListener('click', exportSVG);
+        deleteButton.addEventListener('click', deleteSelectedNodes);
+        addButton.addEventListener('click', () => {
+            if (selectedNodes.length !== 1) { showToast('Please select a single node to add a child to.'); return; }
+            activeParentForInsertion = selectedNodes[0];
+            showModal(addNodeModal, addNodeInput);
+        });
+        generateButton.addEventListener('click', () => {
+            if (selectedNodes.length !== 1) { showToast('Please select a single node to generate children for.'); return; }
+            generateChildren(selectedNodes[0]);
+        });
+        addRootButton.addEventListener('click', () => showModal(addRootModal, addRootInput));
+
+        // --- Menu Toggle Logic ---
+        exportMenuTrigger.addEventListener('click', (event) => {
+            event.stopPropagation();
+            addContainer.classList.remove('menu-visible');
+            exportContainer.classList.toggle('menu-visible');
+        });
+        addMenuTrigger.addEventListener('click', (event) => {
+            event.stopPropagation();
+            exportContainer.classList.remove('menu-visible');
+            addContainer.classList.toggle('menu-visible');
+        });
+        window.addEventListener('click', (event) => {
+            if (!exportContainer.contains(event.target)) exportContainer.classList.remove('menu-visible');
+            if (!addContainer.contains(event.target)) addContainer.classList.remove('menu-visible');
+            if (event.target === svg.node()) {
+                const buttons = d3.selectAll('.action-cluster');
+                const isHidden = buttons.style('opacity') === '0';
+                buttons.style('opacity', isHidden ? '1' : '0').style('pointer-events', isHidden ? 'auto' : 'none');
+            }
+        });
+
+        function showToast(message) {
+            toastMessage.textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        function updateMultiSelectIndicator() {
+            multiSelectIndicator.classList.toggle('hidden', !multiSelectMode);
+        }
+
+        // --- Force Simulation Controls ---
+        function toggleForceLayout() {
+            isForceActive = !isForceActive;
+            forceToggleButton.classList.toggle('paused', !isForceActive);
+            if (isForceActive) {
+                simulation.alpha(1).restart();
+            } else {
+                simulation.stop();
+            }
+        }
+
+        forceToggleButton.addEventListener('mousedown', () => {
+            forceToggleButtonLongPressTimer = setTimeout(() => {
+                forceToggleButtonLongPressTimer = null; // Prevent click event
+                openForceSettingsModal();
+            }, 500);
+        });
+
+        forceToggleButton.addEventListener('mouseup', () => {
+            if (forceToggleButtonLongPressTimer) {
+                clearTimeout(forceToggleButtonLongPressTimer);
+                toggleForceLayout();
+            }
+        });
+
+        function openForceSettingsModal() {
+            chargeSlider.value = forceSettings.charge;
+            chargeValue.textContent = forceSettings.charge;
+            linkSlider.value = forceSettings.linkDistance;
+            linkValue.textContent = forceSettings.linkDistance;
+            collisionSlider.value = forceSettings.collision;
+            collisionValue.textContent = forceSettings.collision;
+            showModal(forceSettingsModal, chargeSlider);
+        }
+
+        chargeSlider.addEventListener('input', (e) => chargeValue.textContent = e.target.value);
+        linkSlider.addEventListener('input', (e) => linkValue.textContent = e.target.value);
+        collisionSlider.addEventListener('input', (e) => collisionValue.textContent = e.target.value);
+
+        forceSettingsForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            forceSettings.charge = +chargeSlider.value;
+            forceSettings.linkDistance = +linkSlider.value;
+            forceSettings.collision = +collisionSlider.value;
+
+            simulation.force('charge').strength(forceSettings.charge);
+            simulation.force('link').distance(forceSettings.linkDistance);
+            simulation.force('collide').strength(forceSettings.collision);
+            
+            if (isForceActive) {
+                simulation.alpha(1).restart();
+            }
+            hideModal(forceSettingsModal);
+        });
+
+
+        // --- Core Mind Map Logic ---
+        async function generateChildren(d) {
+            if (d.generating && !d.parent) return; // Allow root regeneration
+            d.generating = true;
+            d3.select(`a.node[data-id="${d.data._id}"]`).classed('loading', true);
+            
+            const hasChildren = d.data.children && d.data.children.length > 0;
+
+            try {
+                const path = d.ancestors().map(n => n.data.name).reverse();
+                const contextPath = path.join(' -> ');
+                const summaryPrompt = `Given the following path in a mind map: "${contextPath}", provide a brief, one-sentence summary of the core topic.`;
+                const summaryPayload = { contents: [{ role: "user", parts: [{ text: summaryPrompt }] }] };
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                const summaryResponse = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(summaryPayload) });
+                if (!summaryResponse.ok) throw new Error('Failed to get summary from AI.');
+                const summaryResult = await summaryResponse.json();
+                const summaryText = summaryResult.candidates[0].content.parts[0].text;
+                
+                const parentData = await idb.get(d.data._id);
+                parentData.contextPath = contextPath;
+                parentData.aiSummary = summaryText;
+                await idb.set(parentData);
+                
+                const parentColor = parentData.color || '#f8fafc';
+                const parentTextColor = parentData.textColor || '#0f172a';
+
+                let childrenPrompt;
+                let childrenPayload;
+
+                if (hasChildren) {
+                    const existingChildren = d.data.children.map(c => c.name).join('", "');
+                    childrenPrompt = `Given the mind map path "${contextPath}", which already has the following subtopics: ["${existingChildren}"], generate one more unique and relevant subtopic. Do not repeat any of the existing subtopics. Respond with only a JSON object containing a single key "topic" which holds a single string.`;
+                    childrenPayload = {
+                        contents: [{ role: "user", parts: [{ text: childrenPrompt }] }],
+                        generationConfig: {
+                            responseMimeType: "application/json",
+                            responseSchema: { type: "OBJECT", properties: { "topic": { "type": "STRING" } }, required: ["topic"] }
+                        }
+                    };
+                } else {
+                    childrenPrompt = `Given the mind map path "${contextPath}", generate subtopics that directly expand on the final node in the path. Avoid abstract categories; prioritize specific, concrete examples or instances where appropriate. Do not repeat concepts from the existing path or siblings. Respond with only a JSON object containing a single key "topics" which holds an array of strings using proper spacing in topics.`;
+                    childrenPayload = {
+                        contents: [{ role: "user", parts: [{ text: childrenPrompt }] }],
+                        generationConfig: {
+                            responseMimeType: "application/json",
+                            responseSchema: { type: "OBJECT", properties: { "topics": { "type": "ARRAY", items: { "type": "STRING" } } }, required: ["topics"] }
+                        }
+                    };
+                }
+
+                const childrenResponse = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(childrenPayload) });
+                if (!childrenResponse.ok) throw new Error('Failed to generate children from AI.');
+                const childrenResult = await childrenResponse.json();
+                
+                if (childrenResult.candidates && childrenResult.candidates[0].content && childrenResult.candidates[0].content.parts[0]) {
+                    const responseObject = JSON.parse(childrenResult.candidates[0].content.parts[0].text);
+                    
+                    if (hasChildren) {
+                        const newChildName = responseObject.topic;
+                        if (newChildName) {
+                            const newNodeData = { name: newChildName, children: null, _id: crypto.randomUUID() };
+                            if (!d.data.children) d.data.children = [];
+                            d.data.children.push(newNodeData);
+                            await idb.set({ _id: newNodeData._id, notes: '', color: parentColor, textColor: parentTextColor });
+                        }
+                    } else {
+                        const childNames = responseObject.topics || [];
+                        d.data.children = childNames.map(name => ({ name: name, children: null, _id: crypto.randomUUID() }));
+                        await Promise.all(d.data.children.map(child => idb.set({ _id: child._id, notes: '', color: parentColor, textColor: parentTextColor })));
+                    }
+                    update(d);
+                } else { 
+                    throw new Error("Could not parse children from AI response."); 
+                }
+            } catch (error) {
+                if (!hasChildren) {
+                    d.data.children = null; 
+                }
+                console.error('Error in AI generation process:', error);
+                showToast(error.message || "An error occurred during AI generation.");
+            } finally {
+                d.generating = false;
+                d3.select(`a.node[data-id="${d.data._id}"]`).classed('loading', false);
+            }
+        }
+        
+        async function addChildNode(name, parentNode) {
+            if (!parentNode.data.children) parentNode.data.children = [];
+            const parentData = await idb.get(parentNode.data._id);
+            const parentColor = parentData.color || '#f8fafc';
+            const parentTextColor = parentData.textColor || '#0f172a';
+            const newNodeData = { name: name, children: null, _id: crypto.randomUUID() };
+            await idb.set({ _id: newNodeData._id, notes: '', color: parentColor, textColor: parentTextColor, x: parentNode.x, y: parentNode.y });
+            parentNode.data.children.push(newNodeData);
+            await update();
+        }
+
+        async function deleteSelectedNodes() {
+            if (selectedNodes.length === 0) return showToast("Please select one or more nodes to delete.");
+            const rootNodesToDelete = selectedNodes.filter(n => !n.parent);
+            const childNodesToDelete = selectedNodes.filter(n => n.parent);
+            if (rootNodesToDelete.length > 0) {
+                if (roots.length === rootNodesToDelete.length) return showToast("Cannot delete the last root node.");
+                const rootIdsToDelete = new Set(rootNodesToDelete.map(r => r.data._id));
+                roots = roots.filter(r => !rootIdsToDelete.has(r.data._id));
+            }
+            const nodesToDeleteIds = new Set(childNodesToDelete.map(n => n.data._id));
+            const topLevelChildrenToDelete = childNodesToDelete.filter(n => n.parent && !nodesToDeleteIds.has(n.parent.data._id));
+            const nodesByParent = d3.group(topLevelChildrenToDelete, d => d.parent);
+            for (const [parent, nodes] of nodesByParent) {
+                if (!parent.data.children) continue;
+                const idsToRemoveFromThisParent = new Set(nodes.map(n => n.data._id));
+                parent.data.children = parent.data.children.filter(child => !idsToRemoveFromThisParent.has(child._id));
+                if (parent.data.children.length === 0) parent.data.children = null;
+            }
+            const allDescendantIdsToDelete = new Set();
+            selectedNodes.forEach(node => node.descendants().forEach(d => allDescendantIdsToDelete.add(d.data._id)));
+            await Promise.all(Array.from(allDescendantIdsToDelete).map(id => idb.delete(id)));
+            selectedNodes = [];
+            await update();
+        }
+        
+        async function openEditModal() {
+            if (selectedNodes.length === 1) {
+                const selectedNode = selectedNodes[0];
+                const nodeData = await idb.get(selectedNode.data._id);
+                editNodeTitleInput.value = selectedNode.data.name;
+                const notes = nodeData.notes || '';
+                editNodeNotesInput.value = notes;
+                editNodeNotesRendered.innerHTML = marked.parse(notes);
+                editNodeNotesRendered.classList.remove('hidden');
+                editNodeNotesInput.classList.add('hidden');
+                toggleNotesViewButton.textContent = 'Edit Raw';
+                editNodeColorInput.value = nodeData.color || '#f8fafc';
+                editNodeTextColorInput.value = nodeData.textColor || '#0f172a';
+                if (nodeData.contextPath && nodeData.aiSummary) {
+                    editNodeContextDiv.textContent = nodeData.contextPath;
+                    editNodeAiSummaryDiv.textContent = nodeData.aiSummary;
+                    summarySection.classList.remove('hidden');
+                } else {
+                    summarySection.classList.add('hidden');
+                }
+                showModal(editNodeModal, editNodeTitleInput);
+            } else if (selectedNodes.length > 1) {
+                c
+                showModal(multiEditModal, multiEditColorInput);
+            } else {
+                showToast("Please select one or more nodes to edit.");
+            }
+        }
+
+        // --- Import / Export ---
+        async function exportMindMap() {
+            if (roots.length === 0) {
+                showToast("Nothing to export.");
+                return;
+            }
+            try {
+                const sanitizedName = (roots[0].data.name || 'mindmap').replace(/[\s/\\?%*:|"<>]/g, '_').toLowerCase();
+                const exportData = {
+                    structures: roots.map(r => r.data),
+                    metadata: await idb.getAll()
+                };
+                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = `${sanitizedName}_export.json`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch (error) {
+                console.error("Failed to export mind map:", error);
+                showToast("An error occurred during export.");
+            }
+        }
+        
+        async function exportNotesForChain() {
+            if (selectedNodes.length !== 2) {
+                showToast("Please select exactly two nodes to define the start and end of the chain.");
+                return;
+            }
+
+            let [nodeA, nodeB] = selectedNodes;
+            let startNode, endNode;
+
+            if (nodeB.ancestors().includes(nodeA)) {
+                startNode = nodeA;
+                endNode = nodeB;
+            } else if (nodeA.ancestors().includes(nodeB)) {
+                startNode = nodeB;
+                endNode = nodeA;
+            } else {
+                showToast("The selected nodes do not share a direct path. Please select a node and one of its descendants.");
+                return;
+            }
+
+            const chain = endNode.ancestors().slice(0, endNode.ancestors().indexOf(startNode) + 1).reverse();
+            
+            chain.forEach(node => d3.select(`a.node[data-id="${node.data._id}"]`).classed('processing', true));
+
+            let rawNotesContent = "";
+            for (let i = 0; i < chain.length; i++) {
+                const node = chain[i];
+                const headingLevel = i + 1;
+                const nodeData = await idb.get(node.data._id);
+                
+                rawNotesContent += `${'#'.repeat(headingLevel)} ${node.data.name}\n\n`;
+
+                if (nodeData.notes) {
+                    rawNotesContent += `${nodeData.notes}\n\n`;
+                }
+            }
+
+            if (!rawNotesContent.trim()) {
+                showToast("No notes found in the selected chain to generate a document from.");
+                chain.forEach(node => d3.select(`a.node[data-id="${node.data._id}"]`).classed('processing', false));
+                return;
+            }
+
+            exportNotesButton.disabled = true;
+            showToast("Generating document with AI...");
+
+            try {
+                const prompt = `Task: Rewrite the following collection of notes from a mind map into a single, cohesive, and well-structured academic document in Markdown format.
+Tone: Formal, objective, informative.
+Audience: Academic.
+Instructions:
+- Do not use introductions, greetings, poetic language, or address the user directly.
+- Rewrite and combine the provided notes into a single body of work.
+- Structure the final document with appropriate Markdown headings based on the topic hierarchy provided in the notes.
+- The final topic should contain the most detailed content, synthesizing all preceding information.
+- The output must be a clean, properly structured Markdown document.
+
+Raw Notes:
+---
+${rawNotesContent}
+---
+Synthesized Document:`;
+
+                const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!response.ok) throw new Error('Failed to synthesize notes from AI.');
+                
+                const result = await response.json();
+                const synthesizedMarkdown = result.candidates[0].content.parts[0].text;
+
+                const sanitizedName = `${startNode.data.name}_to_${endNode.data.name}_notes`.replace(/[\s/\\?%*:|"<>]/g, '_').toLowerCase();
+                const blob = new Blob([synthesizedMarkdown], { type: "text/markdown" });
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = `${sanitizedName}.md`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+
+            } catch (error) {
+                console.error("Failed to export synthesized notes:", error);
+                showToast("An error occurred during AI document generation.");
+            } finally {
+                exportNotesButton.disabled = false;
+                chain.forEach(node => d3.select(`a.node[data-id="${node.data._id}"]`).classed('processing', false));
+            }
+        }
+        
+        async function exportSVG() {
+            if (roots.length === 0) {
+                showToast("Nothing to export.");
+                return;
+            }
+
+            const svgElement = document.getElementById('mind-map-svg');
+            const clone = svgElement.cloneNode(true);
+            const d3Clone = d3.select(clone);
+
+            // Remove the zoom/pan transform from the main group of the clone
+            d3Clone.select('g').attr('transform', null);
+            
+            // Remove UI-only elements from the clone
+            d3Clone.selectAll('.add-child-button').remove();
+
+            // Embed fonts
+            const fontLink = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap';
+            
+            try {
+                const response = await fetch(fontLink);
+                const css = await response.text();
+                const style = document.createElement('style');
+                style.appendChild(document.createTextNode(css));
+                clone.insertBefore(style, clone.firstChild);
+
+                // Inline all styles by iterating over the original data
+                nodeGroup.selectAll('.node').each(function(d) {
+                    const nodeId = d.data._id;
+                    const clonedNode = d3Clone.select(`[data-id="${nodeId}"]`);
+                    
+                    clonedNode.select('rect')
+                        .style('fill', d.data.color || '#f8fafc')
+                        .style('stroke', '#94a3b8')
+                        .style('stroke-width', '2px')
+                        .attr('rx', 8)
+                        .attr('ry', 8);
+                    
+                    clonedNode.select('.node-text-div')
+                        .style('font-family', "'Inter', sans-serif")
+                        .style('font-size', '14px')
+                        .style('color', d.data.textColor || '#0f172a')
+                        .style('display', 'flex')
+                        .style('justify-content', 'center')
+                        .style('align-items', 'center')
+                        .style('height', '100%')
+                        .style('text-align', 'center')
+                        .style('word-break', 'break-word')
+                        .style('padding', '8px')
+                        .style('box-sizing', 'border-box');
+                });
+                
+                d3Clone.selectAll('.link')
+                    .style('fill', 'none')
+                    .style('stroke', '#94a3b8')
+                    .style('stroke-width', '2px');
+
+                // Calculate bounding box from the original, untransformed group content
+                const gBox = g.node().getBBox();
+                const padding = 50;
+                const viewBox = `${gBox.x - padding} ${gBox.y - padding} ${gBox.width + padding * 2} ${gBox.height + padding * 2}`;
+                
+                d3Clone.attr('viewBox', viewBox)
+                       .attr('width', gBox.width + padding * 2)
+                       .attr('height', gBox.height + padding * 2);
+
+
+                const serializer = new XMLSerializer();
+                let svgString = serializer.serializeToString(clone);
+                svgString = svgString.replace(/<div class="node-text-div"/g, '<div xmlns="http://www.w3.org/1999/xhtml" class="node-text-div"');
+
+                const sanitizedName = (roots[0].data.name || 'mindmap').replace(/[\s/\\?%*:|"<>]/g, '_').toLowerCase();
+                const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = `${sanitizedName}.svg`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+
+            } catch (error) {
+                console.error("Failed to fetch font or export SVG:", error);
+                showToast("An error occurred during SVG export.");
+            }
+        }
+
+        async function importMindMap(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!data.metadata || (!data.structure && !data.structures)) throw new Error("Invalid mind map file format.");
+                    await idb.clearAll();
+                    selectedNodes = [];
+                    for (const item of data.metadata) {
+                        await idb.set(item);
+                    }
+                    let rootStructures = data.structures || (data.structure ? [data.structure] : []);
+                    roots = rootStructures.map(rootData => d3.hierarchy(rootData));
+                    hideModal(initialPromptContainer);
+                    await update();
+                    showToast("Mind map imported successfully!");
+                } catch (error) {
+                    console.error("Failed to import mind map:", error);
+                    showToast(error.message || "Failed to import file.");
+                } finally {
+                    importInput.value = "";
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        importButton.addEventListener('click', () => importInput.click());
+        importInput.addEventListener('change', importMindMap);
+
+        // --- D3 Update Function ---
+        async function update() {
+            // Re-create hierarchies from data to ensure consistency.
+            roots = roots.map(r => d3.hierarchy(r.data, d => d.children));
+            
+            allNodes = [];
+            allLinks = [];
+            roots.forEach(root => {
+                allNodes.push(...root.descendants());
+                allLinks.push(...root.links());
+            });
+
+            // Hydrate nodes with data from DB for rendering (colors, notes, etc.)
+            for (const d of allNodes) {
+                const nodeData = await idb.get(d.data._id);
+                d.data.color = nodeData.color;
+                d.data.textColor = nodeData.textColor;
+                d.fx = nodeData.fx; // Important for persistence
+                d.fy = nodeData.fy;
+            }
+
+            // --- Node Sizing ---
+            allNodes.forEach(d => {
+                const tempDiv = d3.select('body').append('div').attr('class', 'node-text-div').style('position', 'absolute').style('visibility', 'hidden').style('max-width', '140px').style('height', 'auto').text(d.data.name);
+                const rect = tempDiv.node().getBoundingClientRect();
+                tempDiv.remove();
+                d.width = rect.width + 16;
+                d.height = Math.max(rect.height, 40);
+            });
+            
+            // Update simulation with new nodes and links
+            simulation.nodes(allNodes);
+            simulation.force("link").links(allLinks);
+            if (isForceActive) {
+                simulation.alpha(1).restart(); // Reheat the simulation
+            } else {
+                simulation.stop();
+            }
+
+            // --- Render links ---
+            const linkSelection = linkGroup.selectAll("path.link").data(allLinks, d => d.target.data._id);
+            linkSelection.enter().append("path").attr("class", "link").merge(linkSelection);
+            linkSelection.exit().remove();
+
+            // --- Render nodes ---
+            const node = nodeGroup.selectAll("a.node").data(allNodes, d => d.data._id);
+            const nodeEnter = node.enter().append("a")
+                .attr("class", "node")
+                .attr("href", "javascript:void(0);")
+                .attr("data-id", d => d.data._id)
+                .attr("tabindex", 0)
+                .attr("role", "treeitem")
+                .on('focus', (event, d) => d3.select(event.currentTarget).classed('focused', true))
+                .on('blur', (event, d) => d3.select(event.currentTarget).classed('focused', false))
+                .on('mouseover', function() { d3.select(this).select('.add-child-button').style('opacity', 1); })
+                .on('mouseout', function() { d3.select(this).select('.add-child-button').style('opacity', 0); })
+                .on('keydown', handleNodeKeydown)
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+            
+            nodeEnter.append("rect");
+            nodeEnter.append("foreignObject").append("xhtml:div").attr("class", "node-text-div");
+            const addChildButton = nodeEnter.append("g").attr("class", "add-child-button").style("opacity", 0).style("cursor", "pointer")
+                .on('click', (event, d) => {
+                    event.stopPropagation();
+                    if (event.shiftKey) generateChildren(d);
+                    else { activeParentForInsertion = d; showModal(addNodeModal, addNodeInput); }
+                });
+            addChildButton.append("circle").attr("r", 12);
+            addChildButton.append("text").attr("dy", "0.35em").text("+");
+
+            const nodeUpdate = node.merge(nodeEnter);
+            nodeUpdate.attr("aria-label", d => d.data.name);
+            nodeUpdate.select('rect')
+                .attr('width', d => d.width)
+                .attr('height', d => d.height)
+                .attr('x', d => -d.width / 2)
+                .attr('y', d => -d.height / 2)
+                .style('fill', d => d.data.color || '#f8fafc');
+
+            nodeUpdate.select('foreignObject')
+                .attr('width', d => d.width)
+                .attr('height', d => d.height)
+                .attr('x', d => -d.width / 2)
+                .attr('y', d => -d.height / 2)
+                .select('div')
+                    .text(d => d.data.name)
+                    .style('color', d => d.data.textColor || '#0f172a');
+            nodeUpdate.select('.add-child-button').attr("transform", d => `translate(${d.width / 2}, 0)`);
+            node.exit().remove();
+            
+            if(!isForceActive) {
+                allNodes.forEach(d => {
+                    const current_node = d3.select(`a.node[data-id="${d.data._id}"]`);
+                    if(current_node) current_node.attr("transform", `translate(${d.x},${d.y})`);
+                });
+                linkGroup.selectAll("path.link").attr("d", linkGenerator);
+            }
+        }
+        
+        // --- Helper for Drag & Drop ---
+        function findDropTarget(draggedNode) {
+            let target = null;
+            const { x: draggedX, y: draggedY } = draggedNode;
+
+            // Find the node we are hovering over
+            for (const n of allNodes) {
+                // Exclude self and parent from being drop targets
+                if (n === draggedNode || n === draggedNode.parent) {
+                    continue;
+                }
+                // Prevent dropping a node onto one of its own descendants
+                if (n.ancestors().includes(draggedNode)) {
+                    continue;
+                }
+                
+                const isOver = draggedX > n.x - n.width / 2 &&
+                       draggedX < n.x + n.width / 2 &&
+                       draggedY > n.y - n.height / 2 &&
+                       draggedY < n.y + n.height / 2;
+
+                if (isOver) {
+                    target = n;
+                    break; // Found a target, no need to check others
+                }
+            }
+            return target;
+        }
+        
+        // --- Drag & Drop Handlers ---
+        function dragstarted(event, d) {
+            if (event.sourceEvent.target.closest('.add-child-button')) {
+                d.isButtonClick = true;
+                return;
+            }
+            d.isButtonClick = false;
+            if (isForceActive && !event.active) simulation.alphaTarget(0.3).restart();
+            d.dragStartX = event.x;
+            d.dragStartY = event.y;
+            d.fx = d.x;
+            d.fy = d.y;
+            d3.select(this).raise().classed("dragging", true);
+            potentialDropTarget = null; // Reset on new drag
+        }
+
+        function dragged(event, d) {
+            if (d.isButtonClick) return;
+            d.fx = event.x;
+            d.fy = event.y;
+
+            // New drop target detection logic
+            const currentTarget = findDropTarget(d);
+            
+            if (potentialDropTarget && potentialDropTarget !== currentTarget) {
+                d3.select(`a.node[data-id="${potentialDropTarget.data._id}"]`).classed('drop-target', false);
+            }
+
+            potentialDropTarget = currentTarget;
+            
+            if (potentialDropTarget) {
+                d3.select(`a.node[data-id="${potentialDropTarget.data._id}"]`).classed('drop-target', true);
+            }
+
+            if(!isForceActive) {
+                d.x = d.fx;
+                d.y = d.fy;
+                ticked();
+            }
+        }
+
+        async function dragended(event, d) {
+            if (d.isButtonClick) {
+                delete d.isButtonClick;
+                return;
+            }
+
+            if (isForceActive && !event.active) simulation.alphaTarget(0);
+            d3.select(this).classed("dragging", false);
+            
+            if (potentialDropTarget) {
+                d3.select(`a.node[data-id="${potentialDropTarget.data._id}"]`).classed('drop-target', false);
+            }
+
+            // Check if we dropped on a valid target
+            if (potentialDropTarget) {
+                // Reparenting logic
+                const oldParent = d.parent;
+                const newParent = potentialDropTarget;
+
+                // 1. Remove from old parent's children array
+                if (oldParent) {
+                    oldParent.data.children = oldParent.data.children.filter(child => child._id !== d.data._id);
+                    if (oldParent.data.children.length === 0) {
+                        oldParent.data.children = null;
+                    }
+                } else {
+                    // It was a root node, remove it from the roots array
+                    roots = roots.filter(r => r.data._id !== d.data._id);
+                }
+
+                // 2. Add to new parent's children array
+                if (!newParent.data.children) {
+                    newParent.data.children = [];
+                }
+                newParent.data.children.push(d.data);
+
+                // 3. Un-fix the node's position and update DB
+                d.fx = null;
+                d.fy = null;
+                const nodeData = await idb.get(d.data._id);
+                nodeData.fx = null;
+                nodeData.fy = null;
+                await idb.set(nodeData);
+
+                // 4. Trigger a full update
+                await update();
+
+            } else {
+                // Original logic for click vs. drag-to-pin
+                const dist = Math.hypot(event.x - d.dragStartX, event.y - d.dragStartY);
+                
+                if (dist > 5) { // It was a drag-to-pin
+                     const nodeData = await idb.get(d.data._id);
+                     nodeData.fx = d.fx;
+                     nodeData.fy = d.fy;
+                     await idb.set(nodeData);
+                } else { // It was a click
+                    d.fx = null;
+                    d.fy = null;
+                     const nodeData = await idb.get(d.data._id);
+                     nodeData.fx = null;
+                     nodeData.fy = null;
+                     await idb.set(nodeData);
+
+                    if (isForceActive) simulation.alpha(1).restart();
+                    
+                    // Handle click selection logic
+                    if (multiSelectMode || event.sourceEvent.shiftKey) {
+                        const index = selectedNodes.findIndex(n => n.data._id === d.data._id);
+                        if (index > -1) selectedNodes.splice(index, 1);
+                        else selectedNodes.push(d);
+                    } else {
+                        selectedNodes = [d];
+                    }
+                    nodeGroup.selectAll("a.node").classed("selected", n => selectedNodes.some(sn => sn.data._id === n.data._id));
+                    const nodeToFocus = this;
+                    setTimeout(() => nodeToFocus.focus(), 0);
+                }
+            }
+
+            // Cleanup
+            potentialDropTarget = null;
             delete d.dragStartX;
             delete d.dragStartY;
         }
@@ -1608,4 +3405,3 @@ Synthesized Document:`;
     </script>
 </body>
 </html>
-
