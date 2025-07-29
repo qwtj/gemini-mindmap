@@ -240,6 +240,29 @@
         Multi-Select Mode Active
     </div>
 
+    <div id="child-layout-bar" class="fixed top-4 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-sm p-2 rounded-full shadow-lg hidden z-50 transition-opacity duration-300 flex gap-2">
+        <button id="layout-vertical" class="p-2 rounded-full hover:bg-slate-200" aria-label="Arrange children vertically">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m0 0l-4-4m4 4l4-4" />
+            </svg>
+        </button>
+        <button id="layout-horizontal" class="p-2 rounded-full hover:bg-slate-200" aria-label="Arrange children horizontally">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 12h16m0 0l-4-4m4 4l-4 4" />
+            </svg>
+        </button>
+        <button id="layout-arc" class="p-2 rounded-full hover:bg-slate-200" aria-label="Arrange children in an arc">
+             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728" />
+            </svg>
+        </button>
+        <button id="layout-circle" class="p-2 rounded-full hover:bg-slate-200" aria-label="Arrange children in a circle">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        </button>
+    </div>
+
     <button id="help-button" class="action-cluster ui-button top-4 right-4" aria-label="Help and instructions">?</button>
     <input type="file" id="import-input" class="hidden" accept=".json" aria-hidden="true">
     
@@ -729,6 +752,7 @@
         const linkValue = document.getElementById('link-distance-value');
         const collisionSlider = document.getElementById('collision-strength-slider');
         const collisionValue = document.getElementById('collision-strength-value');
+        const childLayoutBar = document.getElementById('child-layout-bar');
 
         // --- Accessibility & Modal Management ---
         function trapFocus(element) {
@@ -1665,6 +1689,18 @@ Synthesized Document:`;
             }
         }
 
+        function updateSelectionUI() {
+            nodeGroup.selectAll("a.node").classed("selected", n => selectedNodes.some(sn => sn.data._id === n.data._id));
+
+            const singleSelectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+            
+            if (singleSelectedNode && singleSelectedNode.children && singleSelectedNode.children.length > 0) {
+                childLayoutBar.classList.remove('hidden');
+            } else {
+                childLayoutBar.classList.add('hidden');
+            }
+        }
+
         async function dragended(event, d) {
             if (d.isButtonClick) {
                 delete d.isButtonClick;
@@ -1739,7 +1775,7 @@ Synthesized Document:`;
                     } else {
                         selectedNodes = [d];
                     }
-                    nodeGroup.selectAll("a.node").classed("selected", n => selectedNodes.some(sn => sn.data._id === n.data._id));
+                    updateSelectionUI();
                     const nodeToFocus = this;
                     setTimeout(() => nodeToFocus.focus(), 0);
                 }
@@ -1768,7 +1804,7 @@ Synthesized Document:`;
                     } else {
                         selectedNodes = [d];
                     }
-                    nodeGroup.selectAll("a.node").classed("selected", n => selectedNodes.some(sn => sn.data._id === n.data._id));
+                    updateSelectionUI();
                     break;
             }
         }
@@ -1788,7 +1824,7 @@ Synthesized Document:`;
             } else if (key === 'e') { openEditModal();
             } else if (key === 'escape') {
                 selectedNodes = [];
-                nodeGroup.selectAll("a.node").classed("selected", false);
+                updateSelectionUI();
                 exportContainer.classList.remove('menu-visible');
                 addContainer.classList.remove('menu-visible');
                 if (multiSelectMode) {
@@ -1798,6 +1834,82 @@ Synthesized Document:`;
                 }
             }
         });
+
+        // --- Child Layout Logic ---
+        async function layoutChildren(layoutType) {
+            if (selectedNodes.length !== 1) return;
+            const parent = selectedNodes[0];
+            if (!parent.children || parent.children.length === 0) return;
+
+            const children = parent.children;
+            const childCount = children.length;
+            const spacing = 20;
+
+            let promises = [];
+
+            switch(layoutType) {
+                case 'vertical': {
+                    let totalHeight = children.reduce((sum, child) => sum + child.height, 0) + (childCount - 1) * spacing;
+                    let currentY = parent.y + parent.height / 2 + spacing - totalHeight / 2;
+                    children.forEach(child => {
+                        child.fx = parent.x;
+                        child.fy = currentY + child.height / 2;
+                        currentY += child.height + spacing;
+                        promises.push(idb.set({ _id: child.data._id, fx: child.fx, fy: child.fy }));
+                    });
+                    break;
+                }
+                case 'horizontal': {
+                    let totalWidth = children.reduce((sum, child) => sum + child.width, 0) + (childCount - 1) * spacing;
+                    let currentX = parent.x + parent.width / 2 + spacing - totalWidth / 2;
+                     children.forEach(child => {
+                        child.fx = currentX + child.width / 2;
+                        child.fy = parent.y;
+                        currentX += child.width + spacing;
+                        promises.push(idb.set({ _id: child.data._id, fx: child.fx, fy: child.fy }));
+                    });
+                    break;
+                }
+                case 'arc': {
+                    const radius = Math.max(150, childCount * 20);
+                    const angleStep = Math.PI / (childCount + 1);
+                    children.forEach((child, i) => {
+                        const angle = Math.PI + angleStep * (i + 1);
+                        child.fx = parent.x + radius * Math.cos(angle);
+                        child.fy = parent.y + radius * Math.sin(angle);
+                        promises.push(idb.set({ _id: child.data._id, fx: child.fx, fy: child.fy }));
+                    });
+                    break;
+                }
+                case 'circle': {
+                    const radius = Math.max(120, childCount * 15);
+                    const angleStep = (2 * Math.PI) / childCount;
+                     children.forEach((child, i) => {
+                        const angle = angleStep * i;
+                        child.fx = parent.x + radius * Math.cos(angle);
+                        child.fy = parent.y + radius * Math.sin(angle);
+                        promises.push(idb.set({ _id: child.data._id, fx: child.fx, fy: child.fy }));
+                    });
+                    break;
+                }
+            }
+
+            await Promise.all(promises);
+            if (isForceActive) {
+                simulation.alpha(0.3).restart();
+            } else {
+                children.forEach(child => {
+                    child.x = child.fx;
+                    child.y = child.fy;
+                });
+                ticked();
+            }
+        }
+
+        document.getElementById('layout-vertical').addEventListener('click', () => layoutChildren('vertical'));
+        document.getElementById('layout-horizontal').addEventListener('click', () => layoutChildren('horizontal'));
+        document.getElementById('layout-arc').addEventListener('click', () => layoutChildren('arc'));
+        document.getElementById('layout-circle').addEventListener('click', () => layoutChildren('circle'));
 
         window.addEventListener('resize', () => {
             simulation.force("x", d3.forceX(window.innerWidth / 2).strength(0.02));
