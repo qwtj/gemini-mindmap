@@ -389,7 +389,8 @@
                         <li>- Drag one node on top of another to make it a child of that node.</li>
                         <li>- Hover over a link and click the red minus button to make a node independent.</li>
                         <li>- Click and drag any node to reposition it. The other nodes will react and move to avoid collisions. A dragged node will stay where you leave it.</li>
-                        <li>- Use your mouse wheel or trackpad to zoom. Click and drag the background to pan the view.</li>
+                        <li>- Click and drag on the background to select multiple nodes with a marquee box.</li>
+                        <li>- Use your mouse wheel or trackpad to zoom. Hold <kbd>Spacebar</kbd> and drag the background to pan the view.</li>
                     </ul>
                 </li>
             </ul>
@@ -662,12 +663,24 @@
             collision: 0.9
         };
         let forceButtonClickTimer = null;
+        let isSpacePressed = false;
 
         let multiSelectMode = false;
         let longPressTimer = null;
         let longPressOccurred = false;
 
-        const zoom = d3.zoom().scaleExtent([0.1, 2]).on("zoom", (event) => g.attr("transform", event.transform));
+        const zoom = d3.zoom().scaleExtent([0.1, 2])
+            .filter(event => {
+                // Allow wheel zoom and double-click zoom
+                if (event.type === 'wheel' || event.type === 'dblclick') return true;
+                // Allow drag-pan only when space is pressed
+                if (event.type === 'mousedown' && isSpacePressed) return true;
+                return false;
+            })
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+
         svg.call(zoom);
 
         // --- D3 Force Simulation ---
@@ -753,6 +766,68 @@
         const collisionSlider = document.getElementById('collision-strength-slider');
         const collisionValue = document.getElementById('collision-strength-value');
         const childLayoutBar = document.getElementById('child-layout-bar');
+
+        // --- Marquee Selection ---
+        const marquee = g.append("rect")
+            .attr("id", "selection-marquee")
+            .attr("class", "hidden")
+            .style("fill", "rgba(79, 70, 229, 0.1)")
+            .style("stroke", "#4f46e5")
+            .style("stroke-width", "1px")
+            .style("stroke-dasharray", "4 2")
+            .style("pointer-events", "none");
+
+        svg.on("mousedown", function(event) {
+            if (isSpacePressed || event.target !== this) return;
+
+            const startPoint = d3.pointer(event, g.node());
+            let marqueeRect = { x: startPoint[0], y: startPoint[1], width: 0, height: 0 };
+
+            marquee.attr("x", marqueeRect.x)
+                   .attr("y", marqueeRect.y)
+                   .attr("width", 0)
+                   .attr("height", 0)
+                   .classed("hidden", false);
+
+            d3.select(window)
+                .on("mousemove.marquee", function(moveEvent) {
+                    const currentPoint = d3.pointer(moveEvent, g.node());
+                    
+                    marqueeRect.x = Math.min(startPoint[0], currentPoint[0]);
+                    marqueeRect.y = Math.min(startPoint[1], currentPoint[1]);
+                    marqueeRect.width = Math.abs(startPoint[0] - currentPoint[0]);
+                    marqueeRect.height = Math.abs(startPoint[1] - currentPoint[1]);
+
+                    marquee.attr("x", marqueeRect.x)
+                           .attr("y", marqueeRect.y)
+                           .attr("width", marqueeRect.width)
+                           .attr("height", marqueeRect.height);
+                })
+                .on("mouseup.marquee", function(upEvent) {
+                    marquee.classed("hidden", true);
+
+                    const newSelection = [];
+                    allNodes.forEach(d => {
+                        if (d.x >= marqueeRect.x && d.x <= marqueeRect.x + marqueeRect.width &&
+                            d.y >= marqueeRect.y && d.y <= marqueeRect.y + marqueeRect.height) {
+                            newSelection.push(d);
+                        }
+                    });
+
+                    if (upEvent.shiftKey) {
+                        newSelection.forEach(n => {
+                            if (!selectedNodes.includes(n)) {
+                                selectedNodes.push(n);
+                            }
+                        });
+                    } else {
+                        selectedNodes = newSelection;
+                    }
+                    
+                    updateSelectionUI();
+                    d3.select(window).on("mousemove.marquee", null).on("mouseup.marquee", null);
+                });
+        });
 
         // --- Accessibility & Modal Management ---
         function trapFocus(element) {
@@ -1815,6 +1890,13 @@ Synthesized Document:`;
         window.addEventListener('keydown', async (event) => {
             const targetNodeName = event.target.nodeName;
             if (targetNodeName === 'INPUT' || targetNodeName === 'TEXTAREA') return;
+
+            if (event.code === 'Space') {
+                event.preventDefault();
+                isSpacePressed = true;
+                svg.style('cursor', 'grab');
+            }
+
             const key = event.key.toLowerCase();
             if (event.shiftKey && key === 'n') {
                 event.preventDefault();
@@ -1838,6 +1920,14 @@ Synthesized Document:`;
                 }
             }
         });
+
+        window.addEventListener('keyup', (event) => {
+            if (event.code === 'Space') {
+                isSpacePressed = false;
+                svg.style('cursor', 'default');
+            }
+        });
+
 
         // --- Child Layout Logic ---
         async function layoutChildren(layoutType) {
