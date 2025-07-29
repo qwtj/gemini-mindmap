@@ -1655,6 +1655,7 @@ Synthesized Document:`;
                 return;
             }
             d.isButtonClick = false;
+            d.wasFixed = d.fx != null; // Check if it was already fixed
             if (isForceActive && !event.active) simulation.alphaTarget(0.3).restart();
             d.dragStartX = event.x;
             d.dragStartY = event.y;
@@ -1714,60 +1715,60 @@ Synthesized Document:`;
                 d3.select(`a.node[data-id="${potentialDropTarget.data._id}"]`).classed('drop-target', false);
             }
 
-            // Check if we dropped on a valid target
             if (potentialDropTarget) {
                 // Reparenting logic
                 const oldParent = d.parent;
                 const newParent = potentialDropTarget;
-
-                // 1. Remove from old parent's children array
                 if (oldParent) {
                     oldParent.data.children = oldParent.data.children.filter(child => child._id !== d.data._id);
                     if (oldParent.data.children.length === 0) {
                         oldParent.data.children = null;
                     }
                 } else {
-                    // It was a root node, remove it from the roots array
                     roots = roots.filter(r => r.data._id !== d.data._id);
                 }
-
-                // 2. Add to new parent's children array
                 if (!newParent.data.children) {
                     newParent.data.children = [];
                 }
                 newParent.data.children.push(d.data);
-
-                // 3. Un-fix the node's position and update DB
                 d.fx = null;
                 d.fy = null;
                 const nodeData = await idb.get(d.data._id);
                 nodeData.fx = null;
                 nodeData.fy = null;
                 await idb.set(nodeData);
-
-                // 4. Trigger a full update
                 await update();
 
             } else {
-                // Original logic for click vs. drag-to-pin
                 const dist = Math.hypot(event.x - d.dragStartX, event.y - d.dragStartY);
                 
-                if (dist > 5) { // It was a drag-to-pin
-                     const nodeData = await idb.get(d.data._id);
-                     nodeData.fx = d.fx;
-                     nodeData.fy = d.fy;
-                     await idb.set(nodeData);
+                if (dist > 5) { // It was a drag
+                    if (d.wasFixed) {
+                        // It WAS fixed, so now we un-fix it by dragging.
+                        d.fx = null;
+                        d.fy = null;
+                        const nodeData = await idb.get(d.data._id);
+                        nodeData.fx = null;
+                        nodeData.fy = null;
+                        await idb.set(nodeData);
+                    } else {
+                        // It was NOT fixed, so now we fix it.
+                        // d.fx and d.fy are already set by dragstarted/dragged
+                        const nodeData = await idb.get(d.data._id);
+                        nodeData.fx = d.fx;
+                        nodeData.fy = d.fy;
+                        await idb.set(nodeData);
+                    }
                 } else { // It was a click
+                    // A click should always un-fix.
                     d.fx = null;
                     d.fy = null;
-                     const nodeData = await idb.get(d.data._id);
-                     nodeData.fx = null;
-                     nodeData.fy = null;
-                     await idb.set(nodeData);
-
-                    if (isForceActive) simulation.alpha(1).restart();
+                    const nodeData = await idb.get(d.data._id);
+                    nodeData.fx = null;
+                    nodeData.fy = null;
+                    await idb.set(nodeData);
                     
-                    // Handle click selection logic
+                    // Handle selection on click
                     if (multiSelectMode || event.sourceEvent.shiftKey) {
                         const index = selectedNodes.findIndex(n => n.data._id === d.data._id);
                         if (index > -1) selectedNodes.splice(index, 1);
@@ -1779,12 +1780,14 @@ Synthesized Document:`;
                     const nodeToFocus = this;
                     setTimeout(() => nodeToFocus.focus(), 0);
                 }
+                if (isForceActive) simulation.alpha(1).restart();
             }
 
             // Cleanup
             potentialDropTarget = null;
             delete d.dragStartX;
             delete d.dragStartY;
+            delete d.wasFixed;
         }
 
         // --- Keyboard Handlers ---
