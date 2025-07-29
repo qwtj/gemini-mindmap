@@ -392,16 +392,21 @@
 
     <div id="add-node-modal" class="modal-container hidden" role="dialog" aria-modal="true" aria-labelledby="add-node-title">
         <div class="bg-white p-8 rounded-lg shadow-2xl text-center w-full max-w-md">
-            <h1 id="add-node-title" class="text-2xl font-bold text-slate-800 mb-4">Add Child Node</h1>
-            <p id="add-node-desc" class="text-slate-600 mb-6">Enter a name for the new topic.</p>
+            <h1 id="add-node-title" class="text-2xl font-bold text-slate-800 mb-4">Add Child Node(s)</h1>
+            <p id="add-node-desc" class="text-slate-600 mb-6">Enter a name for the new topic(s).</p>
             <form id="add-node-form">
-                <input type="text" id="add-node-input" class="w-full px-4 py-3 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="e.g., 'Key Influences'" aria-describedby="add-node-desc">
+                <div id="add-node-inputs-container" class="space-y-2 max-h-60 overflow-y-auto pr-2">
+                    <input type="text" class="add-node-input w-full px-4 py-3 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="e.g., 'Key Influences'" aria-describedby="add-node-desc">
+                </div>
+                <button type="button" id="add-another-node-input" class="w-full text-left mt-2 text-indigo-600 hover:text-indigo-800 font-medium text-sm p-2 rounded-md hover:bg-indigo-50">
+                    + Add another topic
+                </button>
                 <div class="flex gap-4 mt-4">
                     <button type="button" id="cancel-add-node" class="w-full bg-slate-200 text-slate-800 font-bold py-3 px-4 rounded-md hover:bg-slate-300 transition-colors duration-300">
                         Cancel
                     </button>
                     <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-md hover:bg-indigo-700 transition-colors duration-300">
-                        Add Node
+                        Add Node(s)
                     </button>
                 </div>
             </form>
@@ -675,12 +680,13 @@
         const toastMessage = document.getElementById('toast-message');
         const promptForm = document.getElementById('prompt-form');
         const addNodeForm = document.getElementById('add-node-form');
+        const addNodeInputsContainer = document.getElementById('add-node-inputs-container');
+        const addAnotherNodeInputBtn = document.getElementById('add-another-node-input');
         const addRootForm = document.getElementById('add-root-form');
         const editNodeForm = document.getElementById('edit-node-form');
         const multiEditForm = document.getElementById('multi-edit-form');
         const forceSettingsForm = document.getElementById('force-settings-form');
         const promptInput = document.getElementById('prompt-input');
-        const addNodeInput = document.getElementById('add-node-input');
         const addRootInput = document.getElementById('add-root-input');
         const editNodeTitleInput = document.getElementById('edit-node-title-input');
         const editNodeNotesInput = document.getElementById('edit-node-notes');
@@ -782,13 +788,37 @@
             }
         });
 
+        function resetAddNodeModal() {
+            while (addNodeInputsContainer.children.length > 1) {
+                addNodeInputsContainer.removeChild(addNodeInputsContainer.lastChild);
+            }
+            const firstInput = addNodeInputsContainer.querySelector('.add-node-input');
+            if (firstInput) {
+                firstInput.value = '';
+            }
+        }
+
+        addAnotherNodeInputBtn.addEventListener('click', () => {
+            const newInput = document.createElement('input');
+            newInput.type = 'text';
+            newInput.className = 'add-node-input w-full px-4 py-3 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none';
+            newInput.placeholder = "e.g., 'Key Influences'";
+            addNodeInputsContainer.appendChild(newInput);
+            newInput.focus();
+        });
+
         addNodeForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const newNodeName = addNodeInput.value.trim();
-            if (newNodeName && activeParentForInsertion) {
-                addChildNode(newNodeName, activeParentForInsertion);
-            }
-            addNodeInput.value = '';
+            const inputs = addNodeInputsContainer.querySelectorAll('.add-node-input');
+            let nodesAdded = 0;
+            inputs.forEach(input => {
+                const newNodeName = input.value.trim();
+                if (newNodeName && activeParentForInsertion) {
+                    addChildNode(newNodeName, activeParentForInsertion);
+                    nodesAdded++;
+                }
+            });
+            resetAddNodeModal();
             hideModal(addNodeModal);
         });
 
@@ -918,7 +948,10 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
             }
         });
 
-        cancelAddNodeBtn.addEventListener('click', () => hideModal(addNodeModal));
+        cancelAddNodeBtn.addEventListener('click', () => {
+            resetAddNodeModal();
+            hideModal(addNodeModal);
+        });
         cancelAddRootBtn.addEventListener('click', () => hideModal(addRootModal));
         cancelEditNodeBtn.addEventListener('click', () => hideModal(editNodeModal));
         cancelMultiEditBtn.addEventListener('click', () => hideModal(multiEditModal));
@@ -932,7 +965,7 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
         addButton.addEventListener('click', () => {
             if (selectedNodes.length !== 1) { showToast('Please select a single node to add a child to.'); return; }
             activeParentForInsertion = selectedNodes[0];
-            showModal(addNodeModal, addNodeInput);
+            showModal(addNodeModal, addNodeInputsContainer.querySelector('.add-node-input'));
         });
         generateButton.addEventListener('click', () => {
             if (selectedNodes.length !== 1) { showToast('Please select a single node to generate children for.'); return; }
@@ -1528,7 +1561,7 @@ Synthesized Document:`;
                 .on('click', (event, d) => {
                     event.stopPropagation();
                     if (event.shiftKey) generateChildren(d);
-                    else { activeParentForInsertion = d; showModal(addNodeModal, addNodeInput); }
+                    else { activeParentForInsertion = d; showModal(addNodeModal, addNodeInputsContainer.querySelector('.add-node-input')); }
                 });
             addChildButton.append("circle").attr("r", 12);
             addChildButton.append("text").attr("dy", "0.35em").text("+");
@@ -1724,7 +1757,7 @@ Synthesized Document:`;
                 case 'Enter':
                     event.preventDefault();
                     if (event.shiftKey) generateChildren(d);
-                    else { activeParentForInsertion = d; showModal(addNodeModal, addNodeInput); }
+                    else { activeParentForInsertion = d; showModal(addNodeModal, addNodeInputsContainer.querySelector('.add-node-input')); }
                     break;
                 case ' ':
                     event.preventDefault();
