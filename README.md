@@ -90,7 +90,7 @@ This is a web application that allows you to create mind maps using a force-dire
 
 ## Known Issues
 
-*   AI generation relies on a third-party API (Google Gemini) and requires a valid API key to be entered into the javascript.  AI generation may fail if the API key is invalid or if the API is unavailable.
+*   AI generation relies on a third-party API (Google Gemini) and requires a valid API key to be entered into the javascript.  AI generation may fail if the API key is invalid or if the API is unavailable. (Not required if used with Gemini App Sandbox because Gemini App provides automatically)
 *   Performance may degrade with very large mind maps.
 
 ## Contributing
