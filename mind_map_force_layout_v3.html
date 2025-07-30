@@ -825,13 +825,12 @@
                     await update();
                     return `Successfully created a new root node named "${name}".`;
                 },
-                generate_child_nodes: async ({ parentName, count }) => {
+                generate_child_nodes: async ({ parentName, count = 0 }) => {
                     if (!parentName) return "Error: A parent node name is required.";
                     const parentNode = findNodeByName(parentName);
                     if (!parentNode) return `Error: Could not find a parent node named "${parentName}".`;
                     
                     showToast(`Generating ${count || 'new'} children for "${parentName}"...`);
-                    parentNode.generating = true;
                     await update();
                     await generateChildren(parentNode, count);
                     return `Successfully generated children for node "${parentName}".`;
@@ -1088,7 +1087,7 @@ JSON Response:`;
                 const firstRoot = d3.hierarchy(rootData);
                 firstRoot.x = width / 2;
                 firstRoot.y = height / 2;
-                firstRoot.generating = true;
+                firstRoot.generating = false;
                 roots = [firstRoot];
                 await update();
                 generateChildren(firstRoot);
@@ -1370,6 +1369,8 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
 
         // --- Core Mind Map Logic ---
         async function generateChildren(d, requestedCount = 0) {
+            console.log(d.generating);
+            console.log(!d.parent);
             if (d.generating && !d.parent) return;
             d.generating = true;
             d3.select(`a.node[data-id="${d.data._id}"]`).classed('loading', true);
