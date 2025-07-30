@@ -244,19 +244,55 @@
             pointer-events: auto;
         }
 
-        #simple-prompt-container {
-            position: fixed;
-            top: 20%;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 101;
+        /* Default styles for devices with hover capability (e.g., desktop) */
+        @media (hover: hover) {
+            #simple-prompt-container {
+                position: fixed;
+                top: 20%;
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 101;
+            }
+
+            #simple-prompt-input {
+                width: 600px;
+                max-width: 90vw;
+                padding: 1rem 1.5rem;
+                font-size: 1.5rem;
+                color: #1e293b; /* slate-800 */
+                background-color: rgba(255, 255, 255, 0.95);
+                backdrop-filter: blur(8px);
+                border: 1px solid #e2e8f0; /* slate-200 */
+                border-radius: 0.75rem;
+                box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+                outline: none;
+                transition: all 0.2s ease-in-out;
+            }
+
+            #simple-prompt-input::placeholder {
+                color: #94a3b8; /* slate-400 */
+            }
         }
 
+        /* Styles for devices without hover capability (e.g., touchscreens) */
+        @media (hover: none) {
+            #simple-prompt-container {
+                position: fixed;
+                bottom: calc(1rem + env(safe-area-inset-bottom));
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 101;
+                width: calc(100vw - 9rem); /* Fits between the UI buttons */
+            }
+            #simple-prompt-input {
+                width: 100%;
+                font-size: 1.125rem; /* Slightly smaller for mobile */
+                padding: 0.75rem 1rem;
+            }
+        }
+
+        /* Shared styles for the prompt input across all devices */
         #simple-prompt-input {
-            width: 600px;
-            max-width: 90vw;
-            padding: 1rem 1.5rem;
-            font-size: 1.5rem;
             color: #1e293b; /* slate-800 */
             background-color: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(8px);
@@ -817,6 +853,7 @@
         const simplePromptContainer = document.getElementById('simple-prompt-container');
         const simplePromptForm = document.getElementById('simple-prompt-form');
         const simplePromptInput = document.getElementById('simple-prompt-input');
+        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
         // --- Agent Engine ---
         const AgentEngine = {
@@ -1024,6 +1061,7 @@ JSON Response:`;
         }
 
         function hideSimplePrompt() {
+            if (isTouchDevice) return;
             simplePromptContainer.classList.add('hidden');
             window.removeEventListener('click', handleOutsideClick, true);
         }
@@ -1032,9 +1070,11 @@ JSON Response:`;
             simplePromptContainer.classList.remove('hidden');
             simplePromptInput.focus();
             simplePromptInput.value = '';
-            setTimeout(() => {
-                window.addEventListener('click', handleOutsideClick, true);
-            }, 0);
+            if (!isTouchDevice) {
+                setTimeout(() => {
+                    window.addEventListener('click', handleOutsideClick, true);
+                }, 0);
+            }
         }
 
         function handleOutsideClick(event) {
@@ -1467,8 +1507,6 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
 
         // --- Core Mind Map Logic ---
         async function generateChildren(d, requestedCount = 0) {
-            console.log(d.generating);
-            console.log(!d.parent);
             if (d.generating && !d.parent) return;
             d.generating = true;
             d3.select(`a.node[data-id="${d.data._id}"]`).classed('loading', true);
@@ -2447,8 +2485,12 @@ Synthesized Document:`;
         document.getElementById('layout-circle').addEventListener('click', () => layoutChildren('circle'));
 
         window.addEventListener('resize', updateCanvasSize);
-        
+        window.addEventListener('resize', updateCanvasSize);
         idb.initDb().then(() => console.log("Database initialized."));
+
+        if (isTouchDevice) {
+            simplePromptContainer.classList.remove('hidden');
+        }
     </script>
 </body>
 </html>
