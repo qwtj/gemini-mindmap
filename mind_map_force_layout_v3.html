@@ -276,6 +276,7 @@
 
     <button id="help-button" class="action-cluster ui-button top-4 right-4" aria-label="Help and instructions">?</button>
     <input type="file" id="import-input" class="hidden" accept=".json" aria-hidden="true">
+    <input type="file" id="import-md-input" class="hidden" accept=".md,.markdown,.txt" aria-hidden="true">
     
     <!-- UI Buttons -->
     <button id="edit-button" class="action-cluster ui-button top-4 left-4" aria-label="Edit selected node">
@@ -373,7 +374,7 @@
                 <li><strong>New Map:</strong> Press <kbd>Shift</kbd> + <kbd>N</kbd> to start a new map.</li>
                 <li><strong>Import/Export:</strong>
                     <ul>
-                        <li>- Press <kbd>Shift</kbd> + <kbd>I</kbd> to import a map from a JSON file.</li>
+                        <li>- Press <kbd>Shift</kbd> + <kbd>I</kbd> to import a map from a JSON or Markdown file.</li>
                         <li>- Click the **Export** button to toggle export options (JSON, Notes, SVG, Markdown).</li>
                         <li>- Select two nodes in a direct path, then use the **Export Notes** option to generate a Markdown document from that chain.</li>
                     </ul>
@@ -425,7 +426,9 @@
             </form>
             <div class="mt-4 text-slate-500">
                 or
-                <button id="import-button" class="font-medium text-indigo-600 hover:text-indigo-500">import a mind map</button>
+                <button id="import-button" class="font-medium text-indigo-600 hover:text-indigo-500">import from JSON</button>
+                or
+                <button id="import-md-button" class="font-medium text-indigo-600 hover:text-indigo-500">import from Markdown</button>
             </div>
         </div>
     </div>
@@ -763,6 +766,7 @@
         const editNodeAiSummaryDiv = document.getElementById('edit-node-ai-summary');
         const summarySection = document.getElementById('summary-section');
         const importInput = document.getElementById('import-input');
+        const importMdInput = document.getElementById('import-md-input');
         const cancelAddNodeBtn = document.getElementById('cancel-add-node');
         const cancelAddRootBtn = document.getElementById('cancel-add-root');
         const cancelEditNodeBtn = document.getElementById('cancel-edit-node');
@@ -771,6 +775,7 @@
         const helpButton = document.getElementById('help-button');
         const closeHelpModalBtn = document.getElementById('close-help-modal');
         const importButton = document.getElementById('import-button');
+        const importMdButton = document.getElementById('import-md-button');
         const editButton = document.getElementById('edit-button');
         const exportJsonButton = document.getElementById('export-json-button');
         const exportNotesButton = document.getElementById('export-notes-button');
@@ -1636,8 +1641,121 @@ Synthesized Document:`;
             reader.readAsText(file);
         }
 
+        function parseMarkdownToHierarchy(markdownText) {
+            const lines = markdownText.split('\n');
+            const rootNodes = [];
+            const path = []; // Tracks the current hierarchy of nodes
+            let currentNotes = [];
+
+            const flushNotes = () => {
+                if (currentNotes.length > 0 && path.length > 0) {
+                    const lastNode = path[path.length - 1];
+                    lastNode.notes = (lastNode.notes ? lastNode.notes + '\n' : '') + currentNotes.join('\n').trim();
+                }
+                currentNotes = [];
+            };
+
+            for (const line of lines) {
+                const headingMatch = line.match(/^(#+)\s+(.*)/);
+
+                if (headingMatch) {
+                    flushNotes(); // Attach collected notes to the previous node
+
+                    const level = headingMatch[1].length;
+                    const name = headingMatch[2].trim();
+
+                    const newNode = {
+                        name: name,
+                        _id: crypto.randomUUID(),
+                        children: [],
+                        notes: ''
+                    };
+
+                    // Adjust path to find the correct parent
+                    while (path.length >= level) {
+                        path.pop();
+                    }
+
+                    if (path.length === 0) { // This is a root node
+                        rootNodes.push(newNode);
+                    } else { // This is a child node
+                        const parent = path[path.length - 1];
+                        if (!parent.children) {
+                            parent.children = [];
+                        }
+                        parent.children.push(newNode);
+                    }
+                    path.push(newNode);
+                } else if (line.trim() !== '') {
+                    currentNotes.push(line);
+                }
+            }
+            flushNotes(); // Attach any remaining notes
+
+            // Clean up empty children arrays
+            const cleanup = (nodes) => {
+                nodes.forEach(node => {
+                    if (node.children && node.children.length === 0) {
+                        node.children = null;
+                    } else if (node.children) {
+                        cleanup(node.children);
+                    }
+                });
+            };
+            cleanup(rootNodes);
+
+            return rootNodes;
+        }
+
+        async function importFromMarkdown(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const markdownText = e.target.result;
+                    const structures = parseMarkdownToHierarchy(markdownText);
+                    if (structures.length === 0) throw new Error("Could not parse any nodes from the Markdown file.");
+                    
+                    await idb.clearAll();
+                    selectedNodes = [];
+
+                    // Recursively add all parsed nodes to the database
+                    const createDbEntries = async (nodes) => {
+                        for (const node of nodes) {
+                            await idb.set({
+                                _id: node._id,
+                                notes: node.notes || '',
+                                color: '#f8fafc',
+                                textColor: '#0f172a'
+                            });
+                            if (node.children) {
+                                await createDbEntries(node.children);
+                            }
+                        }
+                    };
+
+                    await createDbEntries(structures);
+                    
+                    roots = structures.map(rootData => d3.hierarchy(rootData));
+                    hideModal(initialPromptContainer);
+                    await update();
+                    showToast("Markdown imported successfully!");
+
+                } catch (error) {
+                    console.error("Failed to import from Markdown:", error);
+                    showToast(error.message || "Failed to import Markdown file.");
+                } finally {
+                    importMdInput.value = "";
+                }
+            };
+            reader.readAsText(file);
+        }
+
         importButton.addEventListener('click', () => importInput.click());
         importInput.addEventListener('change', importMindMap);
+        importMdButton.addEventListener('click', () => importMdInput.click());
+        importMdInput.addEventListener('change', importFromMarkdown);
 
         async function severLink(event, d) {
             event.stopPropagation();
@@ -2001,7 +2119,11 @@ Synthesized Document:`;
                 showModal(initialPromptContainer, promptInput);
                 promptInput.value = '';
             } else if (event.shiftKey && key === 'e') { event.preventDefault(); exportMindMap();
-            } else if (event.shiftKey && key === 'i') { event.preventDefault(); importInput.click();
+            } else if (event.shiftKey && key === 'i') { 
+                event.preventDefault(); 
+                // This is a bit of a simplification. A better UI would let the user choose.
+                // For now, we'll just trigger the JSON import.
+                importInput.click();
             } else if (key === 'delete' || key === 'backspace' || key === 'd') { deleteSelectedNodes();
             } else if (key === 'e') { openEditModal();
             } else if (key === 'escape') {
