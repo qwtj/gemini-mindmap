@@ -664,6 +664,7 @@
         };
         let forceButtonClickTimer = null;
         let isSpacePressed = false;
+        let marqueeWasDragged = false;
 
         let multiSelectMode = false;
         let longPressTimer = null;
@@ -767,6 +768,7 @@
         const collisionValue = document.getElementById('collision-strength-value');
         const childLayoutBar = document.getElementById('child-layout-bar');
 
+
         // --- Marquee Selection ---
         const marquee = g.append("rect")
             .attr("id", "selection-marquee")
@@ -779,18 +781,21 @@
 
         svg.on("mousedown", function(event) {
             if (isSpacePressed || event.target !== this) return;
+            
+            marqueeWasDragged = false; // Reset the flag here
 
             const startPoint = d3.pointer(event, g.node());
             let marqueeRect = { x: startPoint[0], y: startPoint[1], width: 0, height: 0 };
 
             marquee.attr("x", marqueeRect.x)
-                   .attr("y", marqueeRect.y)
-                   .attr("width", 0)
-                   .attr("height", 0)
-                   .classed("hidden", false);
+                .attr("y", marqueeRect.y)
+                .attr("width", 0)
+                .attr("height", 0)
+                .classed("hidden", false);
 
             d3.select(window)
                 .on("mousemove.marquee", function(moveEvent) {
+                    marqueeWasDragged = true; // Set the flag to true on move
                     const currentPoint = d3.pointer(moveEvent, g.node());
                     
                     marqueeRect.x = Math.min(startPoint[0], currentPoint[0]);
@@ -1083,14 +1088,20 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
             exportContainer.classList.remove('menu-visible');
             addContainer.classList.toggle('menu-visible');
         });
+        
         window.addEventListener('click', (event) => {
             if (!exportContainer.contains(event.target)) exportContainer.classList.remove('menu-visible');
             if (!addContainer.contains(event.target)) addContainer.classList.remove('menu-visible');
+
             if (event.target === svg.node()) {
-                const buttons = d3.selectAll('.action-cluster');
-                const isHidden = buttons.style('opacity') === '0';
-                buttons.style('opacity', isHidden ? '1' : '0').style('pointer-events', isHidden ? 'auto' : 'none');
+                if (!marqueeWasDragged) {
+                    const buttons = d3.selectAll('.action-cluster');
+                    const isHidden = buttons.style('opacity') === '0';
+                    buttons.style('opacity', isHidden ? '1' : '0').style('pointer-events', isHidden ? 'auto' : 'none');
+                }
             }
+            // Reset the flag after every click event on the window
+            marqueeWasDragged = false;
         });
 
         function showToast(message) {
