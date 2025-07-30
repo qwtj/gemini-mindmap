@@ -13,6 +13,9 @@
             font-family: 'Inter', sans-serif;
             overflow: hidden;
         }
+        #mind-map-svg {
+            display: block;
+        }
         /* Focus style for UI elements outside the SVG */
         button:focus-visible, input:focus-visible, textarea:focus-visible, input[type="range"]:focus-visible {
             outline: 3px solid #4338ca; /* indigo-700 */
@@ -73,15 +76,6 @@
             fill: none;
             stroke: #94a3b8; /* slate-400 */
             stroke-width: 2px;
-        }
-        #delete-button {
-            /* Overrides the Tailwind 'bottom-4' class */
-            bottom: calc(1rem + env(safe-area-inset-bottom));
-        }
-
-        .add-container {
-            /* Overrides the 'bottom: 1rem' in the existing rule */
-            bottom: calc(1rem + env(safe-area-inset-bottom));
         }
         .add-child-button circle {
             fill: #4f46e5; /* indigo-600 */
@@ -221,7 +215,15 @@
 
         .layout-container { top: 8rem; left: 1rem; }
 
-        .add-container { bottom: 1rem; right: 1rem; }
+        #delete-button {
+            bottom: calc(1rem + env(safe-area-inset-bottom));
+            left: 1rem;
+        }
+
+        .add-container {
+            bottom: calc(1rem + env(safe-area-inset-bottom));
+            right: 1rem;
+        }
 
         #add-options-wrapper {
             position: absolute;
@@ -316,7 +318,7 @@
         </button>
     </div>
 
-    <button id="delete-button" class="action-cluster ui-button bottom-4 left-4" aria-label="Delete selected node(s)">
+    <button id="delete-button" class="action-cluster ui-button" aria-label="Delete selected node(s)">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.134H8.09a2.09 2.09 0 0 0-2.09 2.134v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
         </svg>
@@ -576,7 +578,7 @@
         <p id="toast-message"></p>
     </div>
 
-    <svg id="mind-map-svg" width="100vw" height="100vh"></svg>
+    <svg id="mind-map-svg" width="100vw"></svg>
 
     <script>
         // --- IndexedDB Helper ---
@@ -648,9 +650,11 @@
             }
         };
 
-        const svg = d3.select("#mind-map-svg");
-        const width = window.innerWidth;
-        const height = window.innerHeight;
+        const svgElement = document.getElementById('mind-map-svg');
+        const svg = d3.select(svgElement);
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        
         const g = svg.append("g");
         const linkGroup = g.append("g").attr("class", "links");
         const severGroup = g.append("g").attr("class", "sever-links");
@@ -881,7 +885,18 @@
         helpModal.addEventListener('click', (e) => { if (e.target === helpModal) hideModal(helpModal); });
 
         // --- Initial Setup ---
+        function updateCanvasSize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            svgElement.setAttribute('height', height);
+
+            simulation.force("x", d3.forceX(width / 2).strength(0.02));
+            simulation.force("y", d3.forceY(height / 2).strength(0.02));
+            if (isForceActive) simulation.alpha(0.3).restart();
+        }
+
         function resetView() {
+            updateCanvasSize();
             const centerTransform = d3.zoomIdentity.translate(width / 2, height / 2).scale(0.8);
             svg.call(zoom.transform, centerTransform);
         }
@@ -899,8 +914,8 @@
                 const rootData = { name: initialPrompt, children: null, _id: 'root-0' };
                 await idb.set({ _id: rootData._id, notes: '', color: '#f8fafc', textColor: '#0f172a' });
                 const firstRoot = d3.hierarchy(rootData);
-                firstRoot.x = height / 2;
-                firstRoot.y = width / 2;
+                firstRoot.x = width / 2;
+                firstRoot.y = height / 2;
                 firstRoot.generating = true;
                 roots = [firstRoot];
                 await update();
@@ -950,8 +965,8 @@
                 await idb.set({ _id: newRootData._id, notes: '', color: '#f8fafc', textColor: '#0f172a' });
                 const newRoot = d3.hierarchy(newRootData);
                 const transform = d3.zoomTransform(svg.node());
-                newRoot.x = (Math.random() * height - transform.y) / transform.k;
-                newRoot.y = (Math.random() * width - transform.x) / transform.k;
+                newRoot.x = (Math.random() * width - transform.x) / transform.k;
+                newRoot.y = (Math.random() * height - transform.y) / transform.k;
                 roots.push(newRoot);
                 await update();
             }
@@ -2031,11 +2046,7 @@ Synthesized Document:`;
         document.getElementById('layout-arc').addEventListener('click', () => layoutChildren('arc'));
         document.getElementById('layout-circle').addEventListener('click', () => layoutChildren('circle'));
 
-        window.addEventListener('resize', () => {
-            simulation.force("x", d3.forceX(window.innerWidth / 2).strength(0.02));
-            simulation.force("y", d3.forceY(window.innerHeight / 2).strength(0.02));
-            if(isForceActive) simulation.alpha(0.3).restart();
-        });
+        window.addEventListener('resize', updateCanvasSize);
         
         idb.initDb().then(() => console.log("Database initialized."));
     </script>
