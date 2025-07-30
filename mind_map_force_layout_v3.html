@@ -2033,32 +2033,13 @@ Synthesized Document:`;
                 const dist = Math.hypot(event.x - d.dragStartX, event.y - d.dragStartY);
                 
                 if (dist > 5) { // It was a drag
-                    if (d.wasFixed) {
-                        // It WAS fixed, so now we un-fix it by dragging.
-                        d.fx = null;
-                        d.fy = null;
-                        const nodeData = await idb.get(d.data._id);
-                        nodeData.fx = null;
-                        nodeData.fy = null;
-                        await idb.set(nodeData);
-                    } else {
-                        // It was NOT fixed, so now we fix it.
-                        // d.fx and d.fy are already set by dragstarted/dragged
-                        const nodeData = await idb.get(d.data._id);
-                        nodeData.fx = d.fx;
-                        nodeData.fy = d.fy;
-                        await idb.set(nodeData);
-                    }
-                } else { // It was a click
-                    // A click should always un-fix.
-                    d.fx = null;
-                    d.fy = null;
+                    // Whether it was fixed before or not, a drag now sets or updates the fixed position.
+                    // d.fx and d.fy are already set by the dragstarted/dragged functions.
                     const nodeData = await idb.get(d.data._id);
-                    nodeData.fx = null;
-                    nodeData.fy = null;
+                    nodeData.fx = d.fx;
+                    nodeData.fy = d.fy;
                     await idb.set(nodeData);
-                    
-                    // Handle selection on click
+                } else { // It was a click, so handle selection
                     if (multiSelectMode || event.sourceEvent.shiftKey) {
                         const index = selectedNodes.findIndex(n => n.data._id === d.data._id);
                         if (index > -1) selectedNodes.splice(index, 1);
@@ -2124,6 +2105,26 @@ Synthesized Document:`;
                 // This is a bit of a simplification. A better UI would let the user choose.
                 // For now, we'll just trigger the JSON import.
                 importInput.click();
+            } else if (key === 'u') {
+                if (selectedNodes.length > 0) {
+                    const promises = selectedNodes.map(async (node) => {
+                        node.fx = null;
+                        node.fy = null;
+                        const nodeData = await idb.get(node.data._id);
+                        if (nodeData) {
+                            nodeData.fx = null;
+                            nodeData.fy = null;
+                            return idb.set(nodeData);
+                        }
+                    });
+                    await Promise.all(promises);
+                    if (isForceActive) {
+                        simulation.alpha(1).restart();
+                    }
+                    showToast(`${selectedNodes.length} node(s) unfixed.`);
+                } else {
+                    showToast("Select one or more nodes to un-fix.");
+                }
             } else if (key === 'delete' || key === 'backspace' || key === 'd') { deleteSelectedNodes();
             } else if (key === 'e') { openEditModal();
             } else if (key === 'escape') {
