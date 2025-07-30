@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>AI Mind Map Generator (Force Layout)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -73,6 +73,15 @@
             fill: none;
             stroke: #94a3b8; /* slate-400 */
             stroke-width: 2px;
+        }
+        #delete-button {
+            /* Overrides the Tailwind 'bottom-4' class */
+            bottom: calc(1rem + env(safe-area-inset-bottom));
+        }
+
+        .add-container {
+            /* Overrides the 'bottom: 1rem' in the existing rule */
+            bottom: calc(1rem + env(safe-area-inset-bottom));
         }
         .add-child-button circle {
             fill: #4f46e5; /* indigo-600 */
