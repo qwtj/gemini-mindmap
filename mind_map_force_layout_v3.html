@@ -961,6 +961,10 @@
                     }
 
                     return `Successfully initiated ${format.toUpperCase()} export.`;
+                },
+                show_help: async () => {
+                    showModal(helpModal, closeHelpModalBtn);
+                    return "Displaying the help modal.";
                 }
             },
             processPrompt: async function(prompt) {
@@ -993,7 +997,11 @@ Available Functions:
    - args: { "format": "string (json, svg, or md)" }
    - Use this for requests like "export the map as a json file" or "save as markdown".
 
-7. fallback: If no other function matches, use this. The entire user prompt will be used to create a new root node and generate 5 children.
+7. show_help: Displays the help modal with instructions and keyboard shortcuts.
+   - args: {}
+   - Use this for requests like "help", "show instructions", or "what can I do?".
+
+8. fallback: If no other function matches, use this. The entire user prompt will be used to create a new root node and generate 5 children.
    - args: { "prompt": "string" }
 
 Examples:
@@ -1003,6 +1011,7 @@ Examples:
 - User: "delete the node Pantera" -> {"tool": "delete_nodes", "args": {"nodeNames": ["Pantera"]}}
 - User: "make the children of 'domains' circular" -> {"tool": "layout_children", "args": {"parentName": "domains", "layoutType": "circle"}}
 - User: "export as svg" -> {"tool": "export_map", "args": {"format": "svg"}}
+- User: "help" -> {"tool": "show_help", "args": {}}
 - User: "the solar system" -> {"tool": "fallback", "args": {"prompt": "the solar system"}}
 
 User's Request: "${prompt}"
