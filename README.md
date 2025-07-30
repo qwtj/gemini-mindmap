@@ -1,98 +1,98 @@
 # AI Mind Map Generator (Force Layout)
 
-This is a web application that allows you to create mind maps using a force-directed graph layout powered by D3.js. You can add nodes, connect them, edit their content, and export the mind map as a JSON file, a collection of notes in markdown, or an SVG image. The application also uses AI (via a Google Gemini API key which must be entered in the javascript) to generate topic suggestions and notes for the mind map.
+This web application is an interactive mind map generator that leverages D3.js for visualization and can optionally utilize AI to suggest new topics and generate notes. It supports keyboard navigation, drag-and-drop node manipulation, and various export options.
 
 ## Features
 
-*   **Interactive Force Layout:** Nodes are arranged using a physics simulation, preventing overlaps and creating a dynamic and visually appealing mind map.
-*   **AI-Powered Generation:** Generate subtopics and notes for your mind map using AI.
-*   **Node Editing:** Edit node titles, notes (with Markdown support), and colors.
-*   **Multi-Node Editing:** Simultaneously change the colors of multiple selected nodes.
-*   **Import/Export:** Save and load your mind maps as JSON files or export selected chain of notes as a markdown document.
-*   **SVG Export:** Export the mind map as a scalable vector graphic (SVG) image.
-*   **Drag and Drop:** Easily reposition nodes and connect them by dragging one node onto another.
-*   **Keyboard Shortcuts:** Use keyboard shortcuts for common actions, improving efficiency.
-*   **Zoom and Pan:** Use your mouse wheel or trackpad to zoom in and out, and click and drag the background to pan the view.
-*   **Accessibility:** The application is designed with accessibility in mind, including keyboard navigation and ARIA attributes.
-*   **Persistence:** Your mind maps are automatically saved to and loaded from your browser's IndexedDB storage.
-*   **Toggleable Physics:** Toggle the physics simulation on and off for manual arrangement.
-*   **Customizable Force Parameters:** Adjust the repulsion, link distance, and collision forces in the physics simulation to suit your needs.
-*   **Multi-Select Mode:** Select multiple nodes for simultaneous editing or deletion.
-*   **Child Layouts:** Arrange children of a selected node in various layouts (vertical, horizontal, arc, circle).
+*   **Interactive Mind Maps:** Create and manipulate mind maps with a force-directed layout.
+*   **AI Integration:** Generate new child nodes and synthesize notes using an AI agent.
+*   **Drag and Drop:** Organize nodes by dragging them to new parent nodes.
+*   **Keyboard Navigation:** Navigate and manipulate the mind map using keyboard shortcuts for accessibility.
+*   **Import/Export:** Import mind maps from JSON or Markdown files and export them in JSON, SVG, or Markdown formats.
+*   **Customization:** Edit node titles, notes, colors, and text colors.
+*   **Multiple Selection:** Edit the colors of several nodes simultaneously.
+*   **Accessibility:** Designed with accessibility in mind, including keyboard navigation and ARIA attributes.
+*   **Responsive Design:** Adapts to different screen sizes.
+*   **Physics Control:** Turn the physics simulation on and off.
+*   **Child Layout:** Arrange the children of a node in different layout styles: vertical, horizontal, arc, and circle.
 
 ## Technologies Used
 
-*   **HTML:** For the structure of the web page.
-*   **CSS (Tailwind CSS):** For styling the application.
-*   **JavaScript:** For the application logic and D3.js integration.
-*   **D3.js:** A JavaScript library for manipulating documents based on data. Used for creating the force-directed graph.
-*   **IndexedDB:** For storing mind map data in the browser.
-*   **Marked.js:** A markdown parser and compiler. Used for rendering node notes.
-*   **Google Gemini API:** Used to generate topics, summaries, and notes (requires a user-provided API key to be entered in the javascript).
+*   **D3.js:** Data visualization library for creating interactive graphics.
+*   **Tailwind CSS:** Utility-first CSS framework for styling the application.
+*   **IndexedDB:** In-browser database for storing mind map data.
+*   **JavaScript:** Core programming language for the application's logic.
+*   **marked.js:** Markdown parser and compiler.
 
-## Getting Started
+## Setup/Installation
 
-1.  Open the `index.html` file in your web browser.
-2.  Enter a central topic in the prompt box that appears and click "Generate" to start your mind map.
-3.  Alternatively, you can click "import a mind map" to load an existing mind map from a JSON file.
+To run this web application locally, you can simply open the `index.html` file in your web browser. No additional setup is required, as it is a client-side application with no server-side dependencies.
+
+1.  Download or clone the repository containing the `index.html` file.
+2.  Open `index.html` in your preferred web browser.
 
 ## Usage
 
-*   **Adding Nodes:**
-    *   Select a node and click the "+" button to add a child node manually.
-    *   Select a node and shift-click the "+" button, or click the "Generate" button to create new sub-topics with AI.
-    *   Click the "New Root" button to add a new, independent mind map tree.
+### Creating a Mind Map
 
-*   **Editing Nodes:**
-    *   Select a single node and press the "E" key or click the "Edit" button to edit its title, notes, and colors.
-    *   Select multiple nodes and press "E" or click the "Edit" button to change their colors simultaneously.
+1.  **Initial Prompt:** Enter a central topic in the initial prompt dialog to start generating ideas.
+2.  **Adding Nodes:**
+    *   Click the **Add** button (+ icon) to manually add child nodes to a selected node.
+    *   Click the **Generate** button (sparkles icon) to generate new sub-topics with AI.
+    *   Click the **Add Root** button (document icon) to add a new root to the map.
+3.  **Editing Nodes:**
+    *   Select a single node and click the **Edit** button (pencil icon) to edit its content (title, notes, colors).
+    *   Select multiple nodes and click the **Edit** button to change their colors simultaneously.
+4.  **Drag and Drop:** Click and drag nodes to move them around and reorganize the mind map.
+5.  **Deleting Nodes:** Select one or more nodes and click the **Delete** button (trash icon) to remove them.
 
-*   **Deleting Nodes:**
-    *   Select one or more nodes and press the "Delete" or "Backspace" key, or click the "Delete" button to delete them.
+### Keyboard Shortcuts
 
-*   **Connecting Nodes:**
-    *   Click and drag one node on top of another to make it a child of that node.
+*   **`C`:** Open the command prompt.
+*   **`Shift + N`:** Start a new mind map.
+*   **`Shift + E`:** Export the mind map as JSON.
+*   **`Shift + I`:** Import a mind map from a JSON or Markdown file.
+*   **`U`:** Un-fix the currently selected node.
+*   **`Delete` / `Backspace` / `D`:** Delete selected node(s).
+*   **`E`:** Edit the currently selected node(s).
+*   **`Escape`:** Deselect all nodes.
 
-*   **Severing Links:**
-    *   Hover over a link and click the red minus button to make a node independent.
+### UI Buttons
 
-*   **Moving Nodes:**
-    *   Click and drag any node to reposition it.
+*   **Edit (Pencil Icon):** Edit selected node(s).
+*   **Export (Arrow Icon):** Open export options (JSON, Notes, SVG, Markdown).
+*   **Force (Physics Icon):** Toggle physics layout. Double-click to adjust repulsion, link distance, and collision forces.
+*   **Delete (Trash Icon):** Delete selected node(s).
+*   **Add Menu (Plus Icon):** Open add node menu (+: manual entry, Sparkles: Generate with AI, Document: add new root)
+*   **Help (Question Mark Icon):** Open the help and instructions modal.
 
-*   **Zooming and Panning:**
-    *   Use your mouse wheel or trackpad to zoom.
-    *   Click and drag the background to pan the view.
+### Agent Command Prompt
 
-*   **Toggle Physics:**
-    *   Click the **Force** button to toggle the physics simulation on and off.
+Press the <kbd>C</kbd> key to open a command prompt. You can type commands using natural language to interact with the mind map. Some example commands include:
 
-*   **Customize Force Parameters:**
-    *   **Long-press** the Force button to open a modal where you can adjust the sensitivity of the repulsion, link distance, and collision forces.
+*   `create a new root node for [topic]`
+*   `generate [number] ideas to [topic]`
+*   `delete the node '[node name]'`
+*   `arrange the children of '[node name]' in a circle`
+*   `export the map as svg`
+*   `export the map as markdown`
+*   `export the map as json`
 
-*   **Using Child Layouts:**
-    *   Select a single node, then select a child layout option above to arrange the child nodes automatically.
+### Notes on AI Integration
 
-*   **Multi-Select Mode:**
-    *   **Long-press** (click and hold for 500ms) on any node to toggle **Multi-Select Mode**.
-    *   In Multi-Select Mode, simply click nodes to add or remove them from the selection.
-    *   Press <kbd>Esc</kbd> to deselect all nodes and exit Multi-Select Mode.
-
-## Keyboard Shortcuts
-
-*   `Shift + N`: Start a new mind map.
-*   `Shift + E`: Export the mind map as JSON.
-*   `Shift + I`: Import a mind map from a JSON file.
-*   `Delete` or `Backspace` or `D`: Delete selected node(s).
-*   `E`: Edit selected node (single) or colors (multiple).
-*   `Escape`: Deselect all nodes and exit Multi-Select Mode.
-*   `Enter` when focused on a node: Add new child node to selected node (or generate child with shift).
-*   `Spacebar` when focused on a node:  Add the focused node to selection.
+1.  The quality of the AI-generated content is directly related to the input prompt.
+2.  AI Integration requires an API key (if used externally from the Gemini App Sandbox). Please follow instructions in the code comments for usage.
+3.  AI features are optional and the application functions fully without them.
 
 ## Known Issues
 
-*   AI generation relies on a third-party API (Google Gemini) and requires a valid API key to be entered into the javascript.  AI generation may fail if the API key is invalid or if the API is unavailable. (Not required if used with Gemini App Sandbox because Gemini App provides automatically)
-*   Performance may degrade with very large mind maps.
+*   The performance of the force layout may degrade with a very large number of nodes.
+*   AI-generated content may sometimes be inaccurate or nonsensical.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests or open issues to report bugs or suggest new features.
+Contributions are welcome! Feel free to submit pull requests or open issues to suggest improvements or report bugs.
+
+## License
+
+This project is open source and available under the [MIT License](LICENSE).
