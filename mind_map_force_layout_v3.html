@@ -894,6 +894,28 @@
                     selectedNodes = []; // Deselect after the operation
 
                     return `Successfully applied '${layoutType}' layout to children of "${parentName}".`;
+                },
+                export_map: async ({ format }) => {
+                    const validFormats = ['json', 'svg', 'md'];
+                    const formatLower = format.toLowerCase();
+
+                    if (!formatLower || !validFormats.includes(formatLower)) {
+                        return `Error: Invalid or missing format. Please specify one of: ${validFormats.join(', ')}.`;
+                    }
+
+                    switch (formatLower) {
+                        case 'json':
+                            exportMindMap();
+                            break;
+                        case 'svg':
+                            exportSVG();
+                            break;
+                        case 'md':
+                            exportAsMarkdown();
+                            break;
+                    }
+
+                    return `Successfully initiated ${format.toUpperCase()} export.`;
                 }
             },
             processPrompt: async function(prompt) {
@@ -922,7 +944,11 @@ Available Functions:
    - args: { "parentName": "string", "layoutType": "string (vertical, horizontal, arc, or circle)" }
    - Use this for requests like "arrange the children of 'main topic' in a circle".
 
-6. fallback: If no other function matches, use this. The entire user prompt will be used to create a new root node and generate 5 children.
+6. export_map: Exports the entire mind map to a specified file format.
+   - args: { "format": "string (json, svg, or md)" }
+   - Use this for requests like "export the map as a json file" or "save as markdown".
+
+7. fallback: If no other function matches, use this. The entire user prompt will be used to create a new root node and generate 5 children.
    - args: { "prompt": "string" }
 
 Examples:
@@ -931,6 +957,7 @@ Examples:
 - User: "add a node called 'Thrash Metal' to the 'Pantera' node" -> {"tool": "add_manual_child", "args": {"parentName": "Pantera", "childName": "Thrash Metal"}}
 - User: "delete the node Pantera" -> {"tool": "delete_nodes", "args": {"nodeNames": ["Pantera"]}}
 - User: "make the children of 'domains' circular" -> {"tool": "layout_children", "args": {"parentName": "domains", "layoutType": "circle"}}
+- User: "export as svg" -> {"tool": "export_map", "args": {"format": "svg"}}
 - User: "the solar system" -> {"tool": "fallback", "args": {"prompt": "the solar system"}}
 
 User's Request: "${prompt}"
