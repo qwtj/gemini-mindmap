@@ -274,10 +274,6 @@
 </head>
 <body class="bg-slate-100">
 
-    <div id="multi-select-indicator" class="fixed top-4 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-4 py-2 rounded-full shadow-lg hidden z-50 transition-opacity duration-300">
-        Multi-Select Mode Active
-    </div>
-
     <div id="child-layout-bar" class="fixed top-4 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-sm p-2 rounded-full shadow-lg hidden z-50 transition-opacity duration-300 flex gap-2">
         <button id="layout-vertical" class="p-2 rounded-full hover:bg-slate-200" aria-label="Arrange children vertically">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -389,57 +385,43 @@
                 <button id="close-help-modal" class="text-3xl text-slate-500 hover:text-slate-800" aria-label="Close help modal">&times;</button>
             </div>
             <ul class="text-slate-700 text-left space-y-4">
-                <li><strong>Automatic Layout:</strong> The mind map now uses a physics simulation to automatically arrange nodes and prevent them from overlapping.</li>
+                <li><strong>Command Prompt:</strong> Press <kbd>C</kbd> to open a command prompt. You can type commands like "create a new root node for Physics" or "add 5 ideas to Quantum Mechanics".</li>
                 <li><strong>Physics Control:</strong>
                     <ul>
-                        <li>- A new **Force** button has been added to the export cluster. Click it to toggle the physics on and off.</li>
-                        <li>- **Double-click** the Force button to open a modal where you can adjust the sensitivity of the repulsion, link distance, and collision forces.</li>
+                        <li>- The **Force** button toggles the physics simulation on and off.</li>
+                        <li>- **Double-click** the Force button to adjust repulsion, link distance, and collision forces.</li>
                     </ul>
                 </li>
-                <li><strong>Start:</strong> Enter a central topic and click "Generate" to begin your mind map.</li>
-                <li><strong>UI Buttons:</strong> Click the background to toggle the floating action buttons.</li>
-                <li><strong>New Map:</strong> Press <kbd>Shift</kbd> + <kbd>N</kbd> to start a new map.</li>
+                <li><strong>Command Prompt:</strong> Press <kbd>C</kbd> to open a command prompt. You can type commands like "create a new root node for Physics" or "add 5 ideas to Quantum Mechanics".</li>
                 <li><strong>Import/Export:</strong>
                     <ul>
                         <li>- Press <kbd>Shift</kbd> + <kbd>I</kbd> to import a map from a JSON or Markdown file.</li>
                         <li>- Click the **Export** button to toggle export options (JSON, Notes, SVG, Markdown).</li>
-                        <li>- Select two nodes in a direct path, then use the **Export Notes** option to generate a Markdown document from that chain.</li>
                     </ul>
                 </li>
                  <li><strong>Adding Nodes:</strong>
                     <ul>
-                        <li>- Click the **Add** button (<kbd>+</kbd>) to toggle the add menu.</li>
-                        <li>- Click the **New Root** button to start a new, independent mind map tree.</li>
+                        <li>- Click the **Add** button (<kbd>+</kbd>) to toggle the add menu for manual node creation.</li>
                         <li>- Select a node, then click the **Generate** button to create new sub-topics with AI.</li>
-                        <li>- Select a node, then click the **Manual Add** button to add a new child node yourself.</li>
                     </ul>
                 </li>
                 <li><strong>Selection:</strong>
                     <ul>
-                        <li>- Hold <kbd>Shift</kbd> and click or press <kbd>Spacebar</kbd> on nodes to add them to your selection.</li>
+                        <li>- Hold <kbd>Shift</kbd> and click nodes to add them to your selection.</li>
                         <li>- Click and drag on the background to select multiple nodes with a marquee box.</li>
                         <li>- Press <kbd>Esc</kbd> to deselect all nodes.</li>
-                        <li>- After selecting a node, press <kbd>U</kbd> to un-fix its position.</li>
                     </ul>
                 </li>
                 <li><strong>Editing:</strong>
                     <ul>
-                        <li>- Select a single node and press the <kbd>E</kbd> key or click the **Edit** button to edit its title, notes, and colors.</li>
-                        <li>- Select multiple nodes and press <kbd>E</kbd> or click the **Edit** button to change their colors simultaneously.</li>
+                        <li>- Select a single node and press <kbd>E</kbd> or click the **Edit** button to edit its content.</li>
+                        <li>- Select multiple nodes and press <kbd>E</kbd> to change their colors simultaneously.</li>
                     </ul>
                 </li>
                 <li><strong>Fixing & Un-fixing Nodes:</strong>
                     <ul>
                         <li>- **Click and drag** any node to move it. Its new position will be "pinned" or "fixed" in place.</li>
-                        <li>- To release a fixed node back into the physics simulation, select it and press the <kbd>U</kbd> key.</li>
-                    </ul>
-                </li>
-                <li><strong>Canvas Interaction:</strong>
-                    <ul>
-                        <li>- Drag one node on top of another to make it a child of that node.</li>
-                        <li>- Hover over a link and click the red minus button to make a node independent.</li>
-                        <li>- Click and drag on the background to select multiple nodes with a marquee box.</li>
-                        <li>- Use your mouse wheel or trackpad to zoom. Hold <kbd>Spacebar</kbd> and drag the background to pan the view.</li>
+                        <li>- To release a fixed node, select it and press the <kbd>U</kbd> key.</li>
                     </ul>
                 </li>
             </ul>
@@ -725,23 +707,12 @@
         let isSpacePressed = false;
         let marqueeWasDragged = false;
 
-        let multiSelectMode = false;
-        let longPressTimer = null;
-        let longPressOccurred = false;
-
         const zoom = d3.zoom().scaleExtent([0.1, 2])
             .filter(event => {
                 const isTouchEvent = event.type.startsWith('touch');
-                
-                // On touch devices, allow default zoom/pan behavior (one-finger pan, two-finger zoom)
-                if (isTouchEvent) {
-                    return true;
-                }
-
-                // For mouse devices, keep the original spacebar-for-pan logic
+                if (isTouchEvent) return true;
                 if (event.type === 'wheel' || event.type === 'dblclick') return true;
                 if (event.type === 'mousedown' && isSpacePressed) return true;
-                
                 return false;
             })
             .on("zoom", (event) => {
@@ -827,7 +798,6 @@
         const addMenuTrigger = document.getElementById('add-menu-trigger');
         const exportContainer = document.getElementById('export-container');
         const addContainer = document.getElementById('add-container');
-        const multiSelectIndicator = document.getElementById('multi-select-indicator');
         const forceToggleButton = document.getElementById('force-toggle-button');
         const chargeSlider = document.getElementById('charge-strength-slider');
         const chargeValue = document.getElementById('charge-strength-value');
@@ -836,18 +806,132 @@
         const collisionSlider = document.getElementById('collision-strength-slider');
         const collisionValue = document.getElementById('collision-strength-value');
         const childLayoutBar = document.getElementById('child-layout-bar');
-
-        // Chat
         const simplePromptContainer = document.getElementById('simple-prompt-container');
         const simplePromptForm = document.getElementById('simple-prompt-form');
         const simplePromptInput = document.getElementById('simple-prompt-input');
+
+        // --- Agent Engine ---
+        const AgentEngine = {
+            tools: {
+                create_root_node: async ({ name }) => {
+                    if (!name) return "Error: A name is required to create a root node.";
+                    const newRootData = { name: name, children: null, _id: crypto.randomUUID() };
+                    await idb.set({ _id: newRootData._id, notes: '', color: '#f8fafc', textColor: '#0f172a' });
+                    const newRoot = d3.hierarchy(newRootData);
+                    const transform = d3.zoomTransform(svg.node());
+                    newRoot.x = (width / 2 - transform.x) / transform.k;
+                    newRoot.y = (height / 2 - transform.y) / transform.k;
+                    roots.push(newRoot);
+                    await update();
+                    return `Successfully created a new root node named "${name}".`;
+                },
+                generate_child_nodes: async ({ parentName, count }) => {
+                    if (!parentName) return "Error: A parent node name is required.";
+                    const parentNode = findNodeByName(parentName);
+                    if (!parentNode) return `Error: Could not find a parent node named "${parentName}".`;
+                    
+                    showToast(`Generating ${count || 'new'} children for "${parentName}"...`);
+                    parentNode.generating = true;
+                    await update();
+                    await generateChildren(parentNode, count);
+                    return `Successfully generated children for node "${parentName}".`;
+                },
+                 add_manual_child: async ({ parentName, childName }) => {
+                    if (!parentName || !childName) return "Error: Both parent and child names are required.";
+                    const parentNode = findNodeByName(parentName);
+                    if (!parentNode) return `Error: Could not find a parent node named "${parentName}".`;
+                    await addChildNode(childName, parentNode);
+                    return `Successfully added child "${childName}" to parent "${parentName}".`;
+                }
+            },
+            processPrompt: async function(prompt) {
+                showToast("Agent is thinking...");
+
+                const systemPrompt = `You are a mind map assistant. Your task is to analyze the user's request and determine which of the available functions should be called. Respond with only a single, clean JSON object and nothing else.
+
+Available Functions:
+1. create_root_node: Creates a new, independent root node.
+   - args: { "name": "string" }
+   - Use this for requests like "start a new map about..." or "create a root node for..."
+
+2. generate_child_nodes: Generates a specified number of new child nodes under an existing parent node.
+   - args: { "parentName": "string", "count": "number" }
+   - Use this for requests like "add 5 ideas to..." or "generate new topics under..."
+
+3. add_manual_child: Adds a single child node with a specific name to a parent node.
+   - args: { "parentName": "string", "childName": "string" }
+   - Use this for requests like "add 'subtopic' under 'main topic'".
+
+4. fallback: If no other function matches, use this. The entire user prompt will be used to create a new root node and generate 5 children.
+   - args: { "prompt": "string" }
+
+Examples:
+- User: "create a new root node Pantera" -> {"tool": "create_root_node", "args": {"name": "Pantera"}}
+- User: "generate 6 new elements under node 'domains'" -> {"tool": "generate_child_nodes", "args": {"parentName": "domains", "count": 6}}
+- User: "add a node called 'Thrash Metal' to the 'Pantera' node" -> {"tool": "add_manual_child", "args": {"parentName": "Pantera", "childName": "Thrash Metal"}}
+- User: "the solar system" -> {"tool": "fallback", "args": {"prompt": "the solar system"}}
+
+User's Request: "${prompt}"
+
+JSON Response:`;
+
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                const payload = {
+                    "contents": [{ "role": "user", "parts": [{ "text": systemPrompt }] }]
+                };
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+                    
+                    const result = await response.json();
+                    const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                    if (!responseText) throw new Error("Received an empty response from the AI.");
+
+                    // Clean the response to remove the markdown code block wrapper
+                    const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
+                    const jsonString = jsonMatch ? jsonMatch[1] : responseText;
+
+                    const responseObject = JSON.parse(jsonString);
+                    const { tool, args } = responseObject;
+
+                    if (tool === 'fallback') {
+                        showToast("No specific action found, creating a new map from your prompt.");
+                        await this.tools.create_root_node({ name: args.prompt });
+                        const newRootNode = findNodeByName(args.prompt);
+                        if (newRootNode) await this.tools.generate_child_nodes({ parentName: newRootNode.data.name, count: 5 });
+                    } else if (this.tools[tool]) {
+                        const toolResult = await this.tools[tool](args);
+                        showToast(toolResult);
+                    } else {
+                        throw new Error(`Unknown tool: ${tool}`);
+                    }
+
+                } catch (error) {
+                    console.error("AgentEngine Error:", error);
+                    showToast(`Error: ${error.message}. Creating a new map as a fallback.`);
+                    await this.tools.create_root_node({ name: prompt });
+                }
+            }
+        };
+
+        function findNodeByName(name) {
+            return allNodes.find(n => n.data.name.toLowerCase() === name.toLowerCase());
+        }
 
         function hideSimplePrompt() {
             simplePromptContainer.classList.add('hidden');
             window.removeEventListener('click', handleOutsideClick, true);
         }
 
-        function showsimplePrompt() {
+        function showSimplePrompt() {
             simplePromptContainer.classList.remove('hidden');
             simplePromptInput.focus();
             simplePromptInput.value = '';
@@ -873,18 +957,7 @@
             const promptText = simplePromptInput.value.trim();
             if (promptText) {
                 hideSimplePrompt();
-                const newRootData = { name: promptText, children: null, _id: crypto.randomUUID() };
-                await idb.set({ _id: newRootData._id, notes: '', color: '#f8fafc', textColor: '#0f172a' });
-                
-                const newRoot = d3.hierarchy(newRootData);
-                const transform = d3.zoomTransform(svg.node());
-                newRoot.x = (width / 2 - transform.x) / transform.k;
-                newRoot.y = (height / 2 - transform.y) / transform.k;
-                newRoot.generating = true;
-                
-                roots.push(newRoot);
-                await update();
-                generateChildren(newRoot);
+                await AgentEngine.processPrompt(promptText);
             }
         });
 
@@ -901,7 +974,7 @@
         svg.on("mousedown", function(event) {
             if (isSpacePressed || event.target !== this) return;
             
-            marqueeWasDragged = false; // Reset the flag here
+            marqueeWasDragged = false;
 
             const startPoint = d3.pointer(event, g.node());
             let marqueeRect = { x: startPoint[0], y: startPoint[1], width: 0, height: 0 };
@@ -914,7 +987,7 @@
 
             d3.select(window)
                 .on("mousemove.marquee", function(moveEvent) {
-                    marqueeWasDragged = true; // Set the flag to true on move
+                    marqueeWasDragged = true;
                     const currentPoint = d3.pointer(moveEvent, g.node());
                     
                     marqueeRect.x = Math.min(startPoint[0], currentPoint[0]);
@@ -1231,7 +1304,6 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
                     buttons.style('opacity', isHidden ? '1' : '0').style('pointer-events', isHidden ? 'auto' : 'none');
                 }
             }
-            // Reset the flag after every click event on the window
             marqueeWasDragged = false;
         });
 
@@ -1239,10 +1311,6 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
             toastMessage.textContent = message;
             toast.classList.remove('hidden');
             setTimeout(() => toast.classList.add('hidden'), 3000);
-        }
-
-        function updateMultiSelectIndicator() {
-            multiSelectIndicator.classList.toggle('hidden', !multiSelectMode);
         }
 
         // --- Force Simulation Controls ---
@@ -1268,16 +1336,14 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
 
         forceToggleButton.addEventListener('click', () => {
              if (forceButtonClickTimer) {
-                // Double click detected
                 clearTimeout(forceButtonClickTimer);
                 forceButtonClickTimer = null;
                 openForceSettingsModal();
             } else {
-                // Single click action
                 forceButtonClickTimer = setTimeout(() => {
                     toggleForceLayout();
                     forceButtonClickTimer = null;
-                }, 250); // Wait for a potential second click
+                }, 250);
             }
         });
 
@@ -1303,8 +1369,8 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
 
 
         // --- Core Mind Map Logic ---
-        async function generateChildren(d) {
-            if (d.generating && !d.parent) return; // Allow root regeneration
+        async function generateChildren(d, requestedCount = 0) {
+            if (d.generating && !d.parent) return;
             d.generating = true;
             d3.select(`a.node[data-id="${d.data._id}"]`).classed('loading', true);
             
@@ -1343,6 +1409,15 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
                             responseSchema: { type: "OBJECT", properties: { "topic": { "type": "STRING" } }, required: ["topic"] }
                         }
                     };
+                } else if (requestedCount > 0) {
+                    childrenPrompt = `Given the mind map path "${contextPath}", generate exactly ${requestedCount} subtopics that directly expand on the final node in the path. Avoid abstract categories; prioritize specific, concrete examples or instances where appropriate. Do not repeat concepts from the existing path or siblings. Respond with only a JSON object containing a single key "topics" which holds an array of strings.`;
+                    childrenPayload = {
+                        contents: [{ role: "user", parts: [{ text: childrenPrompt }] }],
+                        generationConfig: {
+                            responseMimeType: "application/json",
+                            responseSchema: { type: "OBJECT", properties: { "topics": { "type": "ARRAY", items: { "type": "STRING" } } }, required: ["topics"] }
+                        }
+                    };                   
                 } else {
                     childrenPrompt = `Given the mind map path "${contextPath}", generate subtopics that directly expand on the final node in the path. Avoid abstract categories; prioritize specific, concrete examples or instances where appropriate. Do not repeat concepts from the existing path or siblings. Respond with only a JSON object containing a single key "topics" which holds an array of strings using proper spacing in topics.`;
                     childrenPayload = {
@@ -1578,13 +1653,9 @@ Synthesized Document:`;
             const clone = svgElement.cloneNode(true);
             const d3Clone = d3.select(clone);
 
-            // Remove the zoom/pan transform from the main group of the clone
             d3Clone.select('g').attr('transform', null);
-            
-            // Remove UI-only elements from the clone
             d3Clone.selectAll('.add-child-button').remove();
 
-            // Embed fonts
             const fontLink = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap';
             
             try {
@@ -1594,7 +1665,6 @@ Synthesized Document:`;
                 style.appendChild(document.createTextNode(css));
                 clone.insertBefore(style, clone.firstChild);
 
-                // Inline all styles by iterating over the original data
                 nodeGroup.selectAll('.node').each(function(d) {
                     const nodeId = d.data._id;
                     const clonedNode = d3Clone.select(`[data-id="${nodeId}"]`);
@@ -1625,7 +1695,6 @@ Synthesized Document:`;
                     .style('stroke', '#94a3b8')
                     .style('stroke-width', '2px');
 
-                // Calculate bounding box from the original, untransformed group content
                 const gBox = g.node().getBBox();
                 const padding = 50;
                 const viewBox = `${gBox.x - padding} ${gBox.y - padding} ${gBox.width + padding * 2} ${gBox.height + padding * 2}`;
@@ -1661,18 +1730,12 @@ Synthesized Document:`;
 
             let markdownContent = "";
 
-            // Recursive function to build the markdown string
             async function buildMarkdown(node, level) {
-                // Add heading for the current node
                 markdownContent += `${'#'.repeat(level)} ${node.data.name}\n\n`;
-
-                // Get and add notes for the current node
                 const nodeData = await idb.get(node.data._id);
                 if (nodeData && nodeData.notes) {
                     markdownContent += `${nodeData.notes}\n\n`;
                 }
-
-                // Recursively process children
                 if (node.children) {
                     for (const child of node.children) {
                         await buildMarkdown(child, level + 1);
@@ -1680,13 +1743,11 @@ Synthesized Document:`;
                 }
             }
 
-            // Process all root nodes
             for (const root of roots) {
-                await buildMarkdown(root, 1); // Start with level 1 heading
-                markdownContent += '---\n\n'; // Add a separator between trees
+                await buildMarkdown(root, 1);
+                markdownContent += '---\n\n';
             }
 
-            // Create and download the file
             try {
                 const sanitizedName = (roots[0].data.name || 'mindmap').replace(/[\s/\\?%*:|"<>]/g, '_').toLowerCase();
                 const blob = new Blob([markdownContent], { type: "text/markdown;charset=utf-8" });
@@ -1732,7 +1793,7 @@ Synthesized Document:`;
         function parseMarkdownToHierarchy(markdownText) {
             const lines = markdownText.split('\n');
             const rootNodes = [];
-            const path = []; // Tracks the current hierarchy of nodes
+            const path = [];
             let currentNotes = [];
 
             const flushNotes = () => {
@@ -1747,7 +1808,7 @@ Synthesized Document:`;
                 const headingMatch = line.match(/^(#+)\s+(.*)/);
 
                 if (headingMatch) {
-                    flushNotes(); // Attach collected notes to the previous node
+                    flushNotes();
 
                     const level = headingMatch[1].length;
                     const name = headingMatch[2].trim();
@@ -1759,14 +1820,13 @@ Synthesized Document:`;
                         notes: ''
                     };
 
-                    // Adjust path to find the correct parent
                     while (path.length >= level) {
                         path.pop();
                     }
 
-                    if (path.length === 0) { // This is a root node
+                    if (path.length === 0) {
                         rootNodes.push(newNode);
-                    } else { // This is a child node
+                    } else {
                         const parent = path[path.length - 1];
                         if (!parent.children) {
                             parent.children = [];
@@ -1778,9 +1838,8 @@ Synthesized Document:`;
                     currentNotes.push(line);
                 }
             }
-            flushNotes(); // Attach any remaining notes
+            flushNotes();
 
-            // Clean up empty children arrays
             const cleanup = (nodes) => {
                 nodes.forEach(node => {
                     if (node.children && node.children.length === 0) {
@@ -1808,7 +1867,6 @@ Synthesized Document:`;
                     await idb.clearAll();
                     selectedNodes = [];
 
-                    // Recursively add all parsed nodes to the database
                     const createDbEntries = async (nodes) => {
                         for (const node of nodes) {
                             await idb.set({
@@ -1874,7 +1932,6 @@ Synthesized Document:`;
 
         // --- D3 Update Function ---
         async function update() {
-            // Re-create hierarchies from data to ensure consistency.
             roots = roots.map(r => d3.hierarchy(r.data, d => d.children));
             
             allNodes = [];
@@ -1884,16 +1941,14 @@ Synthesized Document:`;
                 allLinks.push(...root.links());
             });
 
-            // Hydrate nodes with data from DB for rendering (colors, notes, etc.)
             for (const d of allNodes) {
                 const nodeData = await idb.get(d.data._id);
                 d.data.color = nodeData.color;
                 d.data.textColor = nodeData.textColor;
-                d.fx = nodeData.fx; // Important for persistence
+                d.fx = nodeData.fx;
                 d.fy = nodeData.fy;
             }
 
-            // --- Node Sizing ---
             allNodes.forEach(d => {
                 const tempDiv = d3.select('body').append('div').attr('class', 'node-text-div').style('position', 'absolute').style('visibility', 'hidden').style('max-width', '140px').style('height', 'auto').text(d.data.name);
                 const rect = tempDiv.node().getBoundingClientRect();
@@ -1902,16 +1957,14 @@ Synthesized Document:`;
                 d.height = Math.max(rect.height, 40);
             });
             
-            // Update simulation with new nodes and links
             simulation.nodes(allNodes);
             simulation.force("link").links(allLinks);
             if (isForceActive) {
-                simulation.alpha(1).restart(); // Reheat the simulation
+                simulation.alpha(1).restart();
             } else {
                 simulation.stop();
             }
 
-            // --- Render links ---
             const linkSelection = linkGroup.selectAll("path.link").data(allLinks, d => d.target.data._id);
             linkSelection.enter().append("path").attr("class", "link")
                 .merge(linkSelection)
@@ -1923,7 +1976,6 @@ Synthesized Document:`;
                 });
             linkSelection.exit().remove();
 
-            // --- Render Sever Buttons ---
             const severButton = severGroup.selectAll("g.sever-link-button").data(allLinks, d => d.target.data._id);
             severButton.exit().remove();
             const severButtonEnter = severButton.enter().append("g")
@@ -1938,8 +1990,6 @@ Synthesized Document:`;
             severButtonEnter.append("text").attr("dy", "0.35em").text("-");
             severButton.merge(severButtonEnter);
 
-
-            // --- Render nodes ---
             const node = nodeGroup.selectAll("a.node").data(allNodes, d => d.data._id);
             const nodeEnter = node.enter().append("a")
                 .attr("class", "node")
@@ -2002,16 +2052,9 @@ Synthesized Document:`;
             let target = null;
             const { x: draggedX, y: draggedY } = draggedNode;
 
-            // Find the node we are hovering over
             for (const n of allNodes) {
-                // Exclude self and parent from being drop targets
-                if (n === draggedNode || n === draggedNode.parent) {
-                    continue;
-                }
-                // Prevent dropping a node onto one of its own descendants
-                if (n.ancestors().includes(draggedNode)) {
-                    continue;
-                }
+                if (n === draggedNode || n === draggedNode.parent) continue;
+                if (n.ancestors().includes(draggedNode)) continue;
                 
                 const isOver = draggedX > n.x - n.width / 2 &&
                        draggedX < n.x + n.width / 2 &&
@@ -2020,7 +2063,7 @@ Synthesized Document:`;
 
                 if (isOver) {
                     target = n;
-                    break; // Found a target, no need to check others
+                    break;
                 }
             }
             return target;
@@ -2033,14 +2076,14 @@ Synthesized Document:`;
                 return;
             }
             d.isButtonClick = false;
-            d.wasFixed = d.fx != null; // Check if it was already fixed
+            d.wasFixed = d.fx != null;
             if (isForceActive && !event.active) simulation.alphaTarget(0.3).restart();
             d.dragStartX = event.x;
             d.dragStartY = event.y;
             d.fx = d.x;
             d.fy = d.y;
             d3.select(this).raise().classed("dragging", true);
-            potentialDropTarget = null; // Reset on new drag
+            potentialDropTarget = null;
         }
 
         function dragged(event, d) {
@@ -2048,7 +2091,6 @@ Synthesized Document:`;
             d.fx = event.x;
             d.fy = event.y;
 
-            // New drop target detection logic
             const currentTarget = findDropTarget(d);
             
             if (potentialDropTarget && potentialDropTarget !== currentTarget) {
@@ -2094,7 +2136,6 @@ Synthesized Document:`;
             }
 
             if (potentialDropTarget) {
-                // Reparenting logic
                 const oldParent = d.parent;
                 const newParent = potentialDropTarget;
                 if (oldParent) {
@@ -2121,14 +2162,12 @@ Synthesized Document:`;
                 const dist = Math.hypot(event.x - d.dragStartX, event.y - d.dragStartY);
                 
                 if (dist > 5) { // It was a drag
-                    // Whether it was fixed before or not, a drag now sets or updates the fixed position.
-                    // d.fx and d.fy are already set by the dragstarted/dragged functions.
                     const nodeData = await idb.get(d.data._id);
                     nodeData.fx = d.fx;
                     nodeData.fy = d.fy;
                     await idb.set(nodeData);
                 } else { // It was a click, so handle selection
-                    if (multiSelectMode || event.sourceEvent.shiftKey) {
+                    if (event.sourceEvent.shiftKey) {
                         const index = selectedNodes.findIndex(n => n.data._id === d.data._id);
                         if (index > -1) selectedNodes.splice(index, 1);
                         else selectedNodes.push(d);
@@ -2142,7 +2181,6 @@ Synthesized Document:`;
                 if (isForceActive) simulation.alpha(1).restart();
             }
 
-            // Cleanup
             potentialDropTarget = null;
             delete d.dragStartX;
             delete d.dragStartY;
@@ -2159,7 +2197,7 @@ Synthesized Document:`;
                     break;
                 case ' ':
                     event.preventDefault();
-                    if (multiSelectMode || event.shiftKey) {
+                    if (event.shiftKey) {
                         const index = selectedNodes.findIndex(n => n.data._id === d.data._id);
                         if (index > -1) selectedNodes.splice(index, 1);
                         else selectedNodes.push(d);
@@ -2190,12 +2228,10 @@ Synthesized Document:`;
             } else if (event.shiftKey && key === 'e') { event.preventDefault(); exportMindMap();
             } else if (event.shiftKey && key === 'i') { 
                 event.preventDefault(); 
-                // This is a bit of a simplification. A better UI would let the user choose.
-                // For now, we'll just trigger the JSON import.
                 importInput.click();
             } else if (key === 'c') {
                 event.preventDefault();
-                showsimplePrompt();
+                showSimplePrompt();
             } else if (key === 'u') {
                 if (selectedNodes.length > 0) {
                     const promises = selectedNodes.map(async (node) => {
@@ -2219,15 +2255,11 @@ Synthesized Document:`;
             } else if (key === 'delete' || key === 'backspace' || key === 'd') { deleteSelectedNodes();
             } else if (key === 'e') { openEditModal();
             } else if (key === 'escape') {
+                hideSimplePrompt();
                 selectedNodes = [];
                 updateSelectionUI();
                 exportContainer.classList.remove('menu-visible');
                 addContainer.classList.remove('menu-visible');
-                if (multiSelectMode) {
-                    multiSelectMode = false;
-                    updateMultiSelectIndicator();
-                    showToast('Multi-select mode disabled.');
-                }
             }
         });
 
