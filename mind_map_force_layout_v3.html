@@ -243,6 +243,33 @@
             transform: translateY(0);
             pointer-events: auto;
         }
+
+        #simple-prompt-container {
+            position: fixed;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 101;
+        }
+
+        #simple-prompt-input {
+            width: 600px;
+            max-width: 90vw;
+            padding: 1rem 1.5rem;
+            font-size: 1.5rem;
+            color: #1e293b; /* slate-800 */
+            background-color: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            border: 1px solid #e2e8f0; /* slate-200 */
+            border-radius: 0.75rem;
+            box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+            outline: none;
+            transition: all 0.2s ease-in-out;
+        }
+
+        #simple-prompt-input::placeholder {
+            color: #94a3b8; /* slate-400 */
+        }
     </style>
 </head>
 <body class="bg-slate-100">
@@ -587,6 +614,12 @@
         </div>
     </div>
 
+    <div id="simple-prompt-container" class="hidden">
+        <form id="simple-prompt-form">
+            <input type="text" id="simple-prompt-input" placeholder="What's on your mind...">
+        </form>
+    </div>
+
     <div id="toast" class="fixed top-5 right-5 bg-red-500 text-white py-2 px-4 rounded-lg shadow-md hidden" role="alert">
         <p id="toast-message"></p>
     </div>
@@ -804,6 +837,56 @@
         const collisionValue = document.getElementById('collision-strength-value');
         const childLayoutBar = document.getElementById('child-layout-bar');
 
+        // Chat
+        const simplePromptContainer = document.getElementById('simple-prompt-container');
+        const simplePromptForm = document.getElementById('simple-prompt-form');
+        const simplePromptInput = document.getElementById('simple-prompt-input');
+
+        function hideSimplePrompt() {
+            simplePromptContainer.classList.add('hidden');
+            window.removeEventListener('click', handleOutsideClick, true);
+        }
+
+        function showsimplePrompt() {
+            simplePromptContainer.classList.remove('hidden');
+            simplePromptInput.focus();
+            simplePromptInput.value = '';
+            setTimeout(() => {
+                window.addEventListener('click', handleOutsideClick, true);
+            }, 0);
+        }
+
+        function handleOutsideClick(event) {
+            if (!simplePromptContainer.contains(event.target)) {
+                hideSimplePrompt();
+            }
+        }
+
+        simplePromptForm.addEventListener('keyup', async (event) => {
+            if (event.code === 'Escape') {
+                hideSimplePrompt();
+            }
+        });
+
+        simplePromptForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const promptText = simplePromptInput.value.trim();
+            if (promptText) {
+                hideSimplePrompt();
+                const newRootData = { name: promptText, children: null, _id: crypto.randomUUID() };
+                await idb.set({ _id: newRootData._id, notes: '', color: '#f8fafc', textColor: '#0f172a' });
+                
+                const newRoot = d3.hierarchy(newRootData);
+                const transform = d3.zoomTransform(svg.node());
+                newRoot.x = (width / 2 - transform.x) / transform.k;
+                newRoot.y = (height / 2 - transform.y) / transform.k;
+                newRoot.generating = true;
+                
+                roots.push(newRoot);
+                await update();
+                generateChildren(newRoot);
+            }
+        });
 
         // --- Marquee Selection ---
         const marquee = g.append("rect")
@@ -2110,6 +2193,9 @@ Synthesized Document:`;
                 // This is a bit of a simplification. A better UI would let the user choose.
                 // For now, we'll just trigger the JSON import.
                 importInput.click();
+            } else if (key === 'c') {
+                event.preventDefault();
+                showsimplePrompt();
             } else if (key === 'u') {
                 if (selectedNodes.length > 0) {
                     const promises = selectedNodes.map(async (node) => {
