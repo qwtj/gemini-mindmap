@@ -306,6 +306,20 @@
         #simple-prompt-input::placeholder {
             color: #94a3b8; /* slate-400 */
         }
+
+        .loader {
+            border: 8px solid #f3f3f3; /* Light grey */
+            border-top: 8px solid #4f46e5; /* Indigo */
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-slate-100">
@@ -646,6 +660,10 @@
         </form>
     </div>
 
+    <div id="loader-overlay" class="modal-container hidden" style="z-index: 200;">
+        <div class="loader"></div>
+    </div>
+
     <div id="toast" class="fixed top-5 right-5 bg-red-500 text-white py-2 px-4 rounded-lg shadow-md hidden" role="alert">
         <p id="toast-message"></p>
     </div>
@@ -855,6 +873,7 @@
         const simplePromptInput = document.getElementById('simple-prompt-input');
         const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
+        const loaderOverlay = document.getElementById('loader-overlay');
 
         // --- Agent Engine ---
         const AgentEngine = {
@@ -1113,11 +1132,14 @@ Markdown Response:`;
                     "contents": [{ "role": "user", "parts": [{ "text": summaryPrompt }] }]
                 };
 
+                showLoader(); // Show loader here
+
                 const geminiResponse = await fetch(apiUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+                
 
                 if (!geminiResponse.ok) throw new Error('AI summarization failed.');
                 const result = await geminiResponse.json();
@@ -1127,6 +1149,7 @@ Markdown Response:`;
 
                 // The AI response is now Markdown
                 const markdownText = responseText;
+                
 
                 // Use the existing Markdown parser
                 const structures = parseMarkdownToHierarchy(markdownText);
@@ -1167,6 +1190,8 @@ Markdown Response:`;
             } catch (error) {
                 console.error("Error processing URL:", error);
                 showToast(`Error: ${error.message}`);
+            } finally {
+                hideLoader(); // Hide loader here
             }
         }
 
@@ -1566,6 +1591,14 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
             toastMessage.textContent = message;
             toast.classList.remove('hidden');
             setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        function showLoader() {
+            loaderOverlay.classList.remove('hidden');
+        }
+
+        function hideLoader() {
+            loaderOverlay.classList.add('hidden');
         }
 
         // --- Force Simulation Controls ---
