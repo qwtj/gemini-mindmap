@@ -681,10 +681,17 @@
 
         const zoom = d3.zoom().scaleExtent([0.1, 2])
             .filter(event => {
-                // Allow wheel zoom and double-click zoom
+                const isTouchEvent = event.type.startsWith('touch');
+                
+                // On touch devices, allow default zoom/pan behavior (one-finger pan, two-finger zoom)
+                if (isTouchEvent) {
+                    return true;
+                }
+
+                // For mouse devices, keep the original spacebar-for-pan logic
                 if (event.type === 'wheel' || event.type === 'dblclick') return true;
-                // Allow drag-pan only when space is pressed
                 if (event.type === 'mousedown' && isSpacePressed) return true;
+                
                 return false;
             })
             .on("zoom", (event) => {
