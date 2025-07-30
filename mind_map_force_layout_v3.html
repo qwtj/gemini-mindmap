@@ -854,6 +854,7 @@
         const simplePromptForm = document.getElementById('simple-prompt-form');
         const simplePromptInput = document.getElementById('simple-prompt-input');
         const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
 
         // --- Agent Engine ---
         const AgentEngine = {
@@ -1069,6 +1070,106 @@ JSON Response:`;
             return allNodes.find(n => n.data.name.toLowerCase() === name.toLowerCase());
         }
 
+        async function processUrlInput(url) {
+            showToast('Scraping website...');
+            try {
+                // Use a CORS proxy to fetch the website content
+                const proxyUrl = `https:/corsproxy.io?url=${encodeURIComponent(url)}`;
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error('Failed to fetch from proxy.');
+                const html = await response.text();
+                if (!html) throw new Error('Could not retrieve website content.');
+
+                // Parse the HTML and extract text
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const pageTitle = doc.querySelector('title')?.textContent || 'Website Content';
+
+                // Attempt to find the main content of the page intelligently
+                const mainContent = doc.querySelector('main') || doc.querySelector('article') || doc.querySelector('#content') || doc.body;
+                const mainText = mainContent.textContent.replace(/\s+/g, ' ').trim();
+                
+                if (mainText.length < 200) throw new Error('Not enough text content found on the page.');
+
+                showToast('Summarizing content...');
+
+                // Create a prompt for Gemini to generate a Markdown hierarchy
+                const summaryPrompt = `Analyze the following text from the website "${pageTitle}". Your task is to create a detailed, hierarchical mind map structure as a Markdown document.
+1.  The top-level heading (#) should be a concise, descriptive title for the entire mind map.
+2.  Use second-level headings (##) for the 5 to 8 primary topics from the text.
+3.  Use third-level headings (###) for any key sub-topics or supporting points under each primary topic.
+
+Do not include any text other than the Markdown headings. Respond with only the raw Markdown.
+
+Text:
+---
+${mainText.substring(0, 15000)} 
+---
+Markdown Response:`;
+
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                const payload = {
+                    "contents": [{ "role": "user", "parts": [{ "text": summaryPrompt }] }]
+                };
+
+                const geminiResponse = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!geminiResponse.ok) throw new Error('AI summarization failed.');
+                const result = await geminiResponse.json();
+                const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (!responseText) throw new Error("Received an empty response from the AI.");
+
+                // The AI response is now Markdown
+                const markdownText = responseText;
+
+                // Use the existing Markdown parser
+                const structures = parseMarkdownToHierarchy(markdownText);
+                if (structures.length === 0) throw new Error("Could not parse any nodes from the AI's Markdown response.");
+
+                // Use logic similar to importFromMarkdown to build the map
+                await idb.clearAll();
+                selectedNodes = [];
+
+                const createDbEntries = async (nodes, isRootLevel = false) => {
+                    for (let i = 0; i < nodes.length; i++) {
+                        const node = nodes[i];
+                        // Add source URL to the first root node's notes
+                        const notes = (isRootLevel && i === 0) ? `Source: ${url}` : (node.notes || '');
+                        await idb.set({
+                            _id: node._id,
+                            notes: notes,
+                            color: '#f8fafc',
+                            textColor: '#0f172a'
+                        });
+                        if (node.children) {
+                            await createDbEntries(node.children, false);
+                        }
+                    }
+                };
+
+                await createDbEntries(structures, true);
+
+                roots = structures.map(rootData => d3.hierarchy(rootData));
+                // Position the new map in the center
+                roots.forEach(r => {
+                    r.x = width / 2;
+                    r.y = height / 2;
+                });
+                await update();
+                showToast('Mind map created from website!');
+
+            } catch (error) {
+                console.error("Error processing URL:", error);
+                showToast(`Error: ${error.message}`);
+            }
+        }
+
         function hideSimplePrompt() {
             if (isTouchDevice) return;
             simplePromptContainer.classList.add('hidden');
@@ -1103,7 +1204,11 @@ JSON Response:`;
             const promptText = simplePromptInput.value.trim();
             if (promptText) {
                 hideSimplePrompt();
-                await AgentEngine.processPrompt(promptText);
+                if (urlRegex.test(promptText)) {
+                    await processUrlInput(promptText);
+                } else {
+                    await AgentEngine.processPrompt(promptText);
+                }
             }
         });
 
@@ -1224,8 +1329,13 @@ JSON Response:`;
         promptForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const initialPrompt = promptInput.value.trim();
-            if (initialPrompt) {
-                hideModal(initialPromptContainer);
+            if (!initialPrompt) return;
+
+            hideModal(initialPromptContainer);
+
+            if (urlRegex.test(initialPrompt)) {
+                await processUrlInput(initialPrompt);
+            } else {
                 await idb.clearAll();
                 roots = [];
                 selectedNodes = [];
@@ -1234,7 +1344,6 @@ JSON Response:`;
                 const firstRoot = d3.hierarchy(rootData);
                 firstRoot.x = width / 2;
                 firstRoot.y = height / 2;
-                firstRoot.generating = false;
                 roots = [firstRoot];
                 await update();
                 generateChildren(firstRoot);
@@ -2268,23 +2377,23 @@ Synthesized Document:`;
             }
         }
 
-        async function dragended(event, d) {
+          async function dragended(event, d) {
             if (d.isButtonClick) {
                 delete d.isButtonClick;
                 return;
             }
-
+                
             if (isForceActive && !event.active) simulation.alphaTarget(0);
             d3.select(this).classed("dragging", false);
-            
+                    
             if (potentialDropTarget) {
                 d3.select(`a.node[data-id="${potentialDropTarget.data._id}"]`).classed('drop-target', false);
             }
-
+        
             if (potentialDropTarget) {
-                const oldParent = d.parent;
+                const oldParent = d.parent; 
                 const newParent = potentialDropTarget;
-                if (oldParent) {
+                if (oldParent) { 
                     oldParent.data.children = oldParent.data.children.filter(child => child._id !== d.data._id);
                     if (oldParent.data.children.length === 0) {
                         oldParent.data.children = null;
@@ -2303,10 +2412,10 @@ Synthesized Document:`;
                 nodeData.fy = null;
                 await idb.set(nodeData);
                 await update();
-
+                    
             } else {
                 const dist = Math.hypot(event.x - d.dragStartX, event.y - d.dragStartY);
-                
+
                 if (dist > 5) { // It was a drag
                     const nodeData = await idb.get(d.data._id);
                     nodeData.fx = d.fx;
