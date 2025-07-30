@@ -871,8 +871,30 @@
                         resultMessage += ` Could not find node(s): ${notFoundNames.join(', ')}.`;
                     }
                     return resultMessage;
-                }
+                },
+                layout_children: async ({ parentName, layoutType }) => {
+                    if (!parentName || !layoutType) {
+                        return "Error: Both parentName and layoutType are required.";
+                    }
+                    const validLayouts = ['vertical', 'horizontal', 'arc', 'circle'];
+                    if (!validLayouts.includes(layoutType.toLowerCase())) {
+                        return `Error: Invalid layoutType. Must be one of: ${validLayouts.join(', ')}.`;
+                    }
 
+                    const parentNode = findNodeByName(parentName);
+                    if (!parentNode) {
+                        return `Error: Could not find a parent node named "${parentName}".`;
+                    }
+                    if (!parentNode.children || parentNode.children.length === 0) {
+                        return `Error: Node "${parentName}" has no children to lay out.`;
+                    }
+
+                    selectedNodes = [parentNode]; // Temporarily select the parent
+                    await layoutChildren(layoutType.toLowerCase());
+                    selectedNodes = []; // Deselect after the operation
+
+                    return `Successfully applied '${layoutType}' layout to children of "${parentName}".`;
+                }
             },
             processPrompt: async function(prompt) {
                 showToast("Agent is thinking...");
@@ -896,7 +918,11 @@ Available Functions:
    - args: { "nodeNames": ["string"] }
    - Use this for requests like "delete the node 'obsolete idea'" or "remove 'topic a' and 'topic b'".
 
-5. fallback: If no other function matches, use this. The entire user prompt will be used to create a new root node and generate 5 children.
+5. layout_children: Arranges the children of a specified parent node in a specific style.
+   - args: { "parentName": "string", "layoutType": "string (vertical, horizontal, arc, or circle)" }
+   - Use this for requests like "arrange the children of 'main topic' in a circle".
+
+6. fallback: If no other function matches, use this. The entire user prompt will be used to create a new root node and generate 5 children.
    - args: { "prompt": "string" }
 
 Examples:
@@ -904,6 +930,7 @@ Examples:
 - User: "generate 6 new elements under node 'domains'" -> {"tool": "generate_child_nodes", "args": {"parentName": "domains", "count": 6}}
 - User: "add a node called 'Thrash Metal' to the 'Pantera' node" -> {"tool": "add_manual_child", "args": {"parentName": "Pantera", "childName": "Thrash Metal"}}
 - User: "delete the node Pantera" -> {"tool": "delete_nodes", "args": {"nodeNames": ["Pantera"]}}
+- User: "make the children of 'domains' circular" -> {"tool": "layout_children", "args": {"parentName": "domains", "layoutType": "circle"}}
 - User: "the solar system" -> {"tool": "fallback", "args": {"prompt": "the solar system"}}
 
 User's Request: "${prompt}"
@@ -2390,4 +2417,3 @@ Synthesized Document:`;
     </script>
 </body>
 </html>
-
