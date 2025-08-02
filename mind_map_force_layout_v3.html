@@ -209,11 +209,32 @@
 
         .export-container.menu-visible #export-options-wrapper {
             opacity: 1;
-            transform: translateY(0);
+            transform: translateX(0);
             pointer-events: auto;
         }
 
         .layout-container { top: 8rem; left: 1rem; }
+
+        /* Default hidden state for the layout menu options */
+        #layout-options-wrapper {
+            position: absolute;
+            top: 0;
+            left: calc(100% + 0.5rem);
+            display: flex;
+            flex-direction: row;
+            gap: 0.5rem;
+            opacity: 0;
+            transform: translateX(-1rem);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: none;
+        }
+
+        /* Visible state for the layout menu options */
+        .layout-container.menu-visible #layout-options-wrapper {
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: auto;
+        }
 
         #delete-button {
             bottom: calc(1rem + env(safe-area-inset-bottom));
@@ -390,9 +411,21 @@
     </div>
 
     <div id="layout-container" class="action-cluster layout-container">
-        <button id="force-toggle-button" class="ui-button" aria-label="Toggle physics layout">
+        <div id="layout-options-wrapper">
+            <button id="force-toggle-button" class="ui-button" aria-label="Toggle physics layout">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0-2.25l2.25 1.313M8.25 12.75l-2.25 1.313M8.25 12.75l2.25-1.313M8.25 12.75V15m7.5-2.25l2.25-1.313M15.75 12.75V15m0-2.25l-2.25 1.313m-3-10.5l2.25-1.313M12 5.25v2.25m0-2.25l-2.25 1.313M5.25 7.5l2.25-1.313M5.25 7.5L3 6.187M5.25 7.5v2.25m13.5-2.25l-2.25-1.313M18.75 7.5l2.25 1.313M18.75 7.5v2.25" />
+                </svg>
+            </button>
+            <button id="crystal-layout-button" class="ui-button" aria-label="Apply crystal lattice layout">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5-2.25-1.313M21 7.5v2.25m0-2.25-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3 2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0-2.25 2.25 1.313M8.25 12.75l-2.25 1.313M8.25 12.75l2.25-1.313M8.25 12.75V15m7.5-2.25 2.25-1.313M15.75 12.75V15m0-2.25-2.25 1.313m-3-10.5 2.25-1.313M12 5.25v2.25m0-2.25-2.25 1.313M5.25 7.5l2.25-1.313M5.25 7.5 3 6.187M5.25 7.5v2.25m13.5-2.25-2.25-1.313M18.75 7.5l2.25 1.313M18.75 7.5v2.25" />
+                </svg>
+            </button>
+        </div>
+        <button id="layout-menu-trigger" class="ui-button" aria-label="Open layout menu">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-2.25-1.313M21 7.5v2.25m0-2.25l-2.25 1.313M3 7.5l2.25-1.313M3 7.5l2.25 1.313M3 7.5v2.25m9 3l2.25-1.313M12 12.75l-2.25-1.313M12 12.75V15m0-2.25l2.25 1.313M8.25 12.75l-2.25 1.313M8.25 12.75l2.25-1.313M8.25 12.75V15m7.5-2.25l2.25-1.313M15.75 12.75V15m0-2.25l-2.25 1.313m-3-10.5l2.25-1.313M12 5.25v2.25m0-2.25l-2.25 1.313M5.25 7.5l2.25-1.313M5.25 7.5L3 6.187M5.25 7.5v2.25m13.5-2.25l-2.25-1.313M18.75 7.5l2.25 1.313M18.75 7.5v2.25" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 6.878V6a2.25 2.25 0 0 1 2.25-2.25h1.5M6 6.878L6 18a2.25 2.25 0 0 0 2.25 2.25h1.5m0-13.5L12 3m0 0 2.25 2.25M12 3v18m0 0 2.25-2.25M12 21l-2.25-2.25m0 0L6 18m2.25-2.25L12 15.75M18 6.878V6a2.25 2.25 0 0 0-2.25-2.25h-1.5m4.5 0L18 18a2.25 2.25 0 0 1-2.25 2.25h-1.5m0-13.5L12 3m0 0-2.25 2.25" />
             </svg>
         </button>
     </div>
@@ -768,6 +801,7 @@
         let forceButtonClickTimer = null;
         let isSpacePressed = false;
         let marqueeWasDragged = false;
+        let currentLayoutMode = 'force'; // Can be 'force' or 'crystal'
 
         const zoom = d3.zoom().scaleExtent([0.1, 2])
             .filter(event => {
@@ -795,7 +829,15 @@
 
         function ticked() {
             linkGroup.selectAll("path.link")
-                .attr("d", linkGenerator);
+                .attr("d", d => {
+                    if (currentLayoutMode === 'crystal') {
+                        // Use straight lines for crystal layout
+                        return `M${d.source.x},${d.source.y}L${d.target.x},${d.target.y}`;
+                    } else {
+                        // Use curved lines for force layout
+                        return linkGenerator(d);
+                    }
+                });
 
             nodeGroup.selectAll("a.node")
                 .attr("transform", d => `translate(${d.x},${d.y})`);
@@ -874,6 +916,19 @@
         const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
         const loaderOverlay = document.getElementById('loader-overlay');
+
+        // Add these with the other UI element variables (around line 1245)
+        const layoutContainer = document.getElementById('layout-container');
+        const layoutMenuTrigger = document.getElementById('layout-menu-trigger');
+        const crystalLayoutButton = document.getElementById('crystal-layout-button');
+
+        // Add this with the other menu toggle listeners (around line 1785)
+        layoutMenuTrigger.addEventListener('click', (event) => {
+            event.stopPropagation();
+            exportContainer.classList.remove('menu-visible');
+            addContainer.classList.remove('menu-visible');
+            layoutContainer.classList.toggle('menu-visible');
+        });
 
         // --- Agent Engine ---
         const AgentEngine = {
@@ -1576,6 +1631,7 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
         window.addEventListener('click', (event) => {
             if (!exportContainer.contains(event.target)) exportContainer.classList.remove('menu-visible');
             if (!addContainer.contains(event.target)) addContainer.classList.remove('menu-visible');
+            if (!layoutContainer.contains(event.target)) layoutContainer.classList.remove('menu-visible');
 
             if (event.target === svg.node()) {
                 if (!marqueeWasDragged) {
@@ -1600,15 +1656,115 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
         function hideLoader() {
             loaderOverlay.classList.add('hidden');
         }
+        // --- Crystal Lattice.---
+        async function applyCrystalLatticeLayout() {
+            if (roots.length === 0) {
+                showToast("No nodes to arrange.");
+                return;
+            }
+
+            if (isForceActive) {
+                toggleForceLayout();
+            }
+            currentLayoutMode = 'crystal';
+            updateLayoutButtonStates(); // Add this line
+            showToast("Applying crystal lattice layout...");
+
+            const hSpacing = 180;
+            const vSpacing = 120;
+
+            // 1. Use d3.tree to get a clean hierarchical layout first
+            const treeLayout = d3.tree().nodeSize([hSpacing, vSpacing]);
+            const rootNode = roots[0]; // This version works best with a single root
+            treeLayout(rootNode);
+            const treeNodes = rootNode.descendants();
+
+            // 2. Snap the tree positions to the nearest hexagonal grid point
+            const snapToHexGrid = (x, y) => {
+                const hexHeight = vSpacing;
+                const hexWidth = hSpacing;
+                
+                const row = Math.round(y / (hexHeight * 0.75));
+                const colOffset = (row % 2 === 1) ? hexWidth / 2 : 0;
+                const col = Math.round((x - colOffset) / hexWidth);
+
+                const snappedX = col * hexWidth + colOffset;
+                const snappedY = row * (hexHeight * 0.75);
+                return { x: snappedX, y: snappedY };
+            };
+
+            const promises = [];
+            treeNodes.forEach(node => {
+                const snappedPos = snapToHexGrid(node.x, node.y);
+                node.fx = snappedPos.x;
+                node.fy = snappedPos.y;
+                promises.push(idb.set({ _id: node.data._id, fx: node.fx, fy: node.fy }));
+            });
+            await Promise.all(promises);
+
+            // 3. Center the layout
+            const boundingBox = {
+                minX: Math.min(...treeNodes.map(n => n.fx)),
+                maxX: Math.max(...treeNodes.map(n => n.fx)),
+                minY: Math.min(...treeNodes.map(n => n.fy)),
+                maxY: Math.max(...treeNodes.map(n => n.fy)),
+            };
+            const layoutWidth = boundingBox.maxX - boundingBox.minX;
+            const layoutHeight = boundingBox.maxY - boundingBox.minY;
+            const offsetX = (width - layoutWidth) / 2 - boundingBox.minX;
+            const offsetY = (height - layoutHeight) / 2 - boundingBox.minY;
+
+            const finalPromises = [];
+            treeNodes.forEach(node => {
+                node.fx += offsetX;
+                node.fy += offsetY;
+                finalPromises.push(idb.set({ _id: node.data._id, fx: node.fx, fy: node.fy }));
+            });
+
+            await Promise.all(finalPromises);
+            await update();
+            showToast("Crystal lattice layout applied.");
+        }
+
+    function updateLayoutButtonStates() {
+            if (currentLayoutMode === 'force') {
+                forceToggleButton.classList.remove('paused');
+                crystalLayoutButton.classList.add('paused');
+            } else { // 'crystal'
+                forceToggleButton.classList.add('paused');
+                crystalLayoutButton.classList.remove('paused');
+            }
+        }
+
+        // Add this with your other button listeners (e.g., after the layoutChildren listeners)
+        crystalLayoutButton.addEventListener('click', applyCrystalLatticeLayout);
 
         // --- Force Simulation Controls ---
         function toggleForceLayout() {
-            isForceActive = !isForceActive;
-            forceToggleButton.classList.toggle('paused', !isForceActive);
-            if (isForceActive) {
-                simulation.alpha(1).restart();
+            if (currentLayoutMode === 'crystal') {
+                // If switching from crystal, un-fix all nodes and restart physics
+                const promises = allNodes.map(node => {
+                    node.fx = null;
+                    node.fy = null;
+                    return idb.set({ _id: node.data._id, fx: null, fy: null });
+                });
+                Promise.all(promises).then(() => {
+                    currentLayoutMode = 'force';
+                    isForceActive = true;
+                    updateLayoutButtonStates();
+                    simulation.alpha(1).restart();
+                    update();
+                    showToast("Switched to Force Layout.");
+                });
             } else {
-                simulation.stop();
+                // Standard toggle for force layout
+                isForceActive = !isForceActive;
+                updateLayoutButtonStates();
+                if (isForceActive) {
+                    simulation.alpha(1).restart();
+                } else {
+                    simulation.stop();
+                }
             }
         }
 
@@ -1737,7 +1893,10 @@ Generate detailed notes for the final topic, "${selectedNode.data.name}", below:
                         d.data.children = childNames.map(name => ({ name: name, children: null, _id: crypto.randomUUID() }));
                         await Promise.all(d.data.children.map(child => idb.set({ _id: child._id, notes: '', color: parentColor, textColor: parentTextColor })));
                     }
-                    update(d);
+                    await update();
+                    if (currentLayoutMode === 'crystal') {
+                        await applyCrystalLatticeLayout();
+                    }
                 } else { 
                     throw new Error("Could not parse children from AI response."); 
                 }
@@ -2323,16 +2482,31 @@ Synthesized Document:`;
                 .select('div')
                     .text(d => d.data.name)
                     .style('color', d => d.data.textColor || '#0f172a');
-            nodeUpdate.select('.add-child-button').attr("transform", d => `translate(${d.width / 2}, 0)`);
-            node.exit().remove();
+            nodeUpdate.select('.add-child-button').attr("transform", d => {
+                if (currentLayoutMode === 'crystal') {
+                    return `translate(0, ${d.height / 2})`; // Center bottom for crystal
+                } else {
+                    return `translate(${d.width / 2}, 0)`; // Right center for force
+                }
+            });            node.exit().remove();
             
             if(!isForceActive) {
                 allNodes.forEach(d => {
+                    d.x = d.fx; // Ensure node position is updated from fixed coordinates
+                    d.y = d.fy;
                     const current_node = d3.select(`a.node[data-id="${d.data._id}"]`);
                     if(current_node) current_node.attr("transform", `translate(${d.x},${d.y})`);
                 });
-                linkGroup.selectAll("path.link").attr("d", linkGenerator);
-            }
+                // Apply the correct link style based on the current layout mode
+                linkGroup.selectAll("path.link")
+                    .attr("d", d => {
+                        if (currentLayoutMode === 'crystal') {
+                            return `M${d.source.x},${d.source.y}L${d.target.x},${d.target.y}`;
+                        } else {
+                            return linkGenerator(d);
+                        }
+                    });
+            }       
         }
         
         // --- Helper for Drag & Drop ---
@@ -2637,11 +2811,13 @@ Synthesized Document:`;
 
         window.addEventListener('resize', updateCanvasSize);
         window.addEventListener('resize', updateCanvasSize);
+        
         idb.initDb().then(() => console.log("Database initialized."));
 
         if (isTouchDevice) {
             simplePromptContainer.classList.remove('hidden');
         }
+        updateLayoutButtonStates(); // Add this line
     </script>
 </body>
 </html>
